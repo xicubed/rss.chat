@@ -1,10 +1,17 @@
-# How to install a rssNetwork server
+# How to install an RSS.chat server
 
 Instructions for a new host-runner.
 
-## Edit config.json
+## How to set up a server
 
-A `config.json` file in the project root holds the settings you'll want to customize for your installation. The repo includes an example with the common knobs (port, database connection, S3 credentials, FeedLand server URLs, base feed URL).
+1. [Download the repo](https://github.com/scripting/rss.chat/archive/refs/heads/main.zip) and unzip it.
+2. Throw away everything but the *code* sub-folder of the server folder.
+3. Inside the code folder, these are the files you need: config.json, emailtemplate.html, package.json, rssnetwork.js. You can remove the rest.
+4. Put the code folder wherever you want the server to run, on the machine that will run it.
+5. Open config.json in a text editor and replace the example values with your own. Every setting is explained in [config.md](config.md).
+6. Create your database -- paste the SQL from the next section at a `mysql>` prompt.
+7. In the code folder, run `npm install`.
+8. Start the server: `node rssnetwork.js`.
 
 ## Create your database
 
