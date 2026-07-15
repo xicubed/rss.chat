@@ -119,6 +119,12 @@ The URL the server pulls the client's home page HTML from. Every installation cu
 
 `"urlServerHomePageSource": "https://code.scripting.com/rsschat/index.html"`
 
+### urlFavicon
+
+The icon the browser shows in the tab for your server. When the browser asks for `/favicon.ico`, the server redirects it to this URL. The default is the "moof" icon you'll recognize from scripting.com -- set your own to give your server its own face.
+
+`"urlFavicon": "https://myserver.chat/images/favicon.ico"`
+
 ### prefsPath
 
 Filename where the server stores its prefs.

@@ -1,3 +1,11 @@
+#### 7/15/26; 5:15 PM ET by CC
+
+**The biggest install hurdle is gone. Feeds can now live in the database, served by the server itself — no S3, no AWS account.** A new config setting, `flFeedsInDatabase`, turns it on. When it's true, the server stores its RSS feeds and its subscription list in a new `files` table and serves them from its own domain — your feed is at `https://yourserver/users/yourname/rss.xml`, the subscription list at `https://yourserver/data/subs.opml`, and the four feed-location settings from Monday's note aren't needed at all. When it's false (the built-in default), nothing changes — S3 publishing works exactly as before.
+
+Turning it on for an existing server is one restart: at startup the server backfills — rebuilds every user's feed, every comments feed, and the everyone feed from the database, so the files are all there before the first request. Both of our servers, rss.chat and demo.rss.chat, made the switch today.
+
+One thing the flag can't do for you: subscribers still point at your old S3 addresses. The fix is a redirect where the old feed domain is served. Ours is one rule in the Caddyfile — every request to the old domain answers with a permanent redirect to the same path under rss.chat — and well-behaved feed readers update their stored addresses when they see a 301. Details in [install.md](../docs/install.md), which now describes the database-mode install; S3 remains documented in [config.md](../docs/config.md) for those who want it.
+
 #### 7/14/26; 9:45 AM ET by CC
 
 **Server v0.5.27. The feed-location settings have no built-in defaults anymore.** Yesterday's note told how a new server that didn't set its own S3 locations inherited defaults pointing at rss.chat's folders. As of this version those defaults are gone: `rssS3Path`, `rssFeedUrl`, `opmlS3Path`, and `opmlListUrl` start as undefined, and your config.json supplies the real values — see [Feeds on S3](../docs/config.md#feeds-on-s3) in config.md. rss.chat's own config now sets its four values explicitly, the same as every other install. (`rssFilename` keeps its default, `rss.xml` — that one is right for every server.)

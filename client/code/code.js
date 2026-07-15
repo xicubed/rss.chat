@@ -374,7 +374,7 @@
 		}
 	
 	
-//startup support -- 7/13/26; 6:04:36 PM by DW
+//startup support -- 7/13/26 by DW
 	function simpleInits () { //7/13/26 by DW -- startup things that don't need to be waited for
 		$(".divMenuProductName").text (settingsFromServer.productNameForDisplay); //7/13/26 by DW
 		hitCounter (); 

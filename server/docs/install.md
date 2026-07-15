@@ -7,7 +7,7 @@
 3. Inside the code folder, these are the files you need: config.json, emailtemplate.html, package.json, rssnetwork.js. You can remove the rest.
 4. Put the code folder wherever you want the server to run, on the machine that will run it.
 5. Open config.json in a text editor and replace the example values with your own. Every setting is explained in [config.md](config.md).
-	- Don't skip the four feed-location settings: `rssS3Path`, `rssFeedUrl`, `opmlS3Path`, `opmlListUrl`. They have no built-in defaults -- every server must have its own locations, and they come from your config.json. See [config.md](config.md) for what each one means.
+	- The example config sets `"flFeedsInDatabase": true`, which means the server stores its feeds in the database and serves them itself, from your own domain. There's nothing more to set up. (The alternative, publishing feeds to Amazon S3, is covered in [config.md](config.md).)
 6. Create your database -- paste the SQL from the next section at a `mysql>` prompt.
 7. In the code folder, run `npm install`.
 8. Start the server: `node rssnetwork.js`.
@@ -63,6 +63,16 @@ create table likes (
 	whenCreated datetime default current_timestamp,
 	primary key (screenname, itemId),
 	index itemId (itemId)
+	) character set utf8mb4 collate utf8mb4_unicode_ci;
+
+create table files (
+	path varchar (512) not null,
+	type varchar (64),
+	filecontents longtext,
+	whenCreated datetime default current_timestamp,
+	whenUpdated datetime default current_timestamp on update current_timestamp,
+	ctSaves int unsigned not null default 1,
+	primary key (path)
 	) character set utf8mb4 collate utf8mb4_unicode_ci;
 ```
 
