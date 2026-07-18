@@ -208,3 +208,5 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# overrides
+/.idea/
