@@ -1,5 +1,5 @@
 {
-	"note": "Example configuration for an rss.chat server. Copy this to your app folder as config.json and replace the values with your own.",
+	"note": "Example configuration for an rss.chat server. Copy this to config.json (which is gitignored) and replace the values with your own. Never commit a real config.json -- it holds your database password.",
 	"productName": "rssChat",
 	"productNameForDisplay": "myserver.chat",
 	"urlServerHomePageSource": "https://code.scripting.com/rsschat/index.html",

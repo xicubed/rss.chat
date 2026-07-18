@@ -210,3 +210,8 @@ dist
 
 # overrides
 /.idea/
+
+# rss.chat server: real config (holds DB password) and runtime state -- never commit
+server/code/config.json
+server/code/prefs.json
+server/code/data/
