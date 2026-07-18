@@ -1,0 +1,47 @@
+name: Deploy to perstitio.us
+
+# Pushing to main ships the server. The runner joins the tailnet with an
+# ephemeral Tailscale key, then SSHes to the box over its private 100.x
+# address (public port 22 stays locked to the owner's IP) and runs
+# pull + install + restart.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-perstitio
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Join tailnet
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -e
+          cd ~/rss.chat
+          git pull --ff-only origin main
+          cd server/code
+          npm install --no-audit --no-fund
+          sudo systemctl restart rsschat
+          sleep 3
+          systemctl is-active rsschat && echo "deployed $(git rev-parse --short HEAD)"
+          REMOTE
