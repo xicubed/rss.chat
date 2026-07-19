@@ -1774,11 +1774,33 @@ function handleHttpRequest (theRequest) {
 		
 	
 	switch (theRequest.lowerpath) {
-		case "/": //7/17/26 by DW
-			theRequest.addToPagetable = {
-				feedUrlEveryone: config.rssFeedUrl + config.rssFilename
-				};
-			return (false); //don't consume, pass it through daveappserver
+		case "/": //7/19/26 by CC -- serve the home page from the repo's client copy so we can add what the shipped page doesn't have: the door to /compose. Everything the page loads -- all the client JS, the themes -- still comes from the shipped client's addresses; only the HTML shell is ours, and the two additions are injected here at serve time so the file itself stays merge-clean with upstream.
+			try {
+				var homePageText = fs.readFileSync ("../../client/code/index.html", "utf8");
+				const pagetable = {
+					productName: config.productName,
+					productNameForDisplay: config.productNameForDisplay,
+					version: config.version,
+					flEnableLogin: config.flEnableLogin,
+					urlServerForClient: config.urlServerForClient,
+					urlWebsocketServerForClient: config.urlWebsocketServerForClient,
+					flWebsocketEnabled: config.flWebsocketEnabled,
+					feedUrlEveryone: config.rssFeedUrl + config.rssFilename
+					};
+				for (var x in pagetable) {
+					homePageText = homePageText.split ("[%" + x + "%]").join (pagetable [x]);
+					}
+				homePageText = homePageText.replace ("<li><a onclick=\"newPostCommand ();\">New post...</a></li>", "<li><a onclick=\"newPostCommand ();\">New post...</a></li>\n										<li><a href=\"/compose\">Compose in AsciiDoc...</a></li>");
+				homePageText = homePageText.replace ("</head>", "<script src=\"/composebridge.js\"></script>\n\t\t</head>");
+				theRequest.httpReturn (200, "text/html", homePageText);
+				return (true);
+				}
+			catch (err) { //no repo client copy on this machine -- serve the shipped page the way it's always worked
+				theRequest.addToPagetable = {
+					feedUrlEveryone: config.rssFeedUrl + config.rssFilename
+					};
+				return (false); //don't consume, pass it through daveappserver
+				}
 		case "/feed":
 			getUserFeed (params.screenname, params.format, function (err, theText, theFormat) {
 				if (err) {
@@ -1804,6 +1826,16 @@ function handleHttpRequest (theRequest) {
 			return (true);
 		case "/renderasciidoc": //7/19/26 by CC -- authenticated preview: asciidoctext in, {html} out
 			renderAsciidocPreview (params.emailaddress, params.emailcode, params.asciidoctext, httpReturn);
+			return (true);
+		case "/composebridge.js": //7/19/26 by CC -- the script the served home page injects; see composebridge.js
+			fs.readFile ("composebridge.js", "utf8", function (err, jstext) {
+				if (err) {
+					theRequest.httpReturn (404, "text/plain", "Not found.");
+					}
+				else {
+					theRequest.httpReturn (200, "text/javascript", jstext);
+					}
+				});
 			return (true);
 		case "/compose": //7/19/26 by CC -- the AsciiDoc composer page: source pane, live preview, publish
 			fs.readFile ("compose.html", "utf8", function (err, htmltext) {

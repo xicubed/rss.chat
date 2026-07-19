@@ -258,7 +258,9 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 					setStatus ("That doesn't look like a post id.", true);
 					return;
 					}
-				const id = match [0];
+				loadById (match [0]);
+				}
+			function loadById (id) {
 				const guid = location.origin + "/?id=" + id;
 				fetch ("/getitembyguid?guid=" + encodeURIComponent (guid)) .then (function (response) {
 					response.text () .then (function (text) {
@@ -310,6 +312,10 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 				el ("idPublish").addEventListener ("click", publish);
 				el ("idNew").addEventListener ("click", startNew);
 				el ("idLoad").addEventListener ("click", loadPost);
+				const urlId = new URLSearchParams (location.search).get ("id"); //arriving from the timeline's edit button on an AsciiDoc post
+				if (urlId !== null) {
+					loadById (urlId);
+					}
 				}
 			</script>
 		</body>
