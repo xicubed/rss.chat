@@ -1,7 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-	<!-- mikeL's avatar: a lambda at a terminal prompt -->
-	<rect width="64" height="64" rx="10" fill="#0d1117"/>
-	<rect x="1.5" y="1.5" width="61" height="61" rx="9" fill="none" stroke="#30363d" stroke-width="1.5"/>
-	<text x="12" y="45" font-family="Menlo, Consolas, 'Courier New', monospace" font-size="36" font-weight="bold" fill="#3fb950">&#955;</text>
-	<rect x="36" y="38" width="13" height="8" rx="1" fill="#3fb950"/> <!-- the cursor: a stubby phosphor block, like a green-screen terminal -->
-</svg>
+	<!-- mikeL's avatar: a lambda at the prompt of an old green-phosphor CRT -->
+	<defs>
+		<filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+			<feGaussianBlur stdDeviation="2.2" result="blur"/>
+			<feMerge>
+				<feMergeNode in="blur"/>
+				<feMergeNode in="SourceGraphic"/>
+				</feMerge>
+			</filter>
+		<radialGradient id="tube" cx="50%" cy="45%" r="78%">
+			<stop offset="0%" stop-color="#0b2416"/>
+			<stop offset="65%" stop-color="#071a0f"/>
+			<stop offset="100%" stop-color="#030b06"/>
+			</radialGradient>
+		<pattern id="scanlines" width="64" height="3" patternUnits="userSpaceOnUse">
+			<rect width="64" height="1.1" y="1.9" fill="#000000" opacity="0.35"/>
+			</pattern>
+		</defs>
+	<rect width="64" height="64" rx="10" fill="url(#tube)"/>
+	<g filter="url(#glow)">
+		<text x="12" y="45" font-family="Menlo, Consolas, 'Courier New', monospace" font-size="36" font-weight="bold" fill="#3bf573">&#955;</text>
+		<rect x="36" y="40" width="13" height="6" rx="1" fill="#3bf573"/>
+		</g>
+	<rect width="64" height="64" rx="10" fill="url(#scanlines)"/>
+	<rect x="1.5" y="1.5" width="61" height="61" rx="9" fill="none" stroke="#0e2b1a" stroke-width="1.5"/>
+	</svg>
