@@ -18,7 +18,8 @@ const highlightTheme = "github-light"; //light background, matches the default t
 const highlightLangs = [
 	"js", "ts", "jsx", "tsx", "json", "html", "xml", "css", "scss",
 	"bash", "shell", "python", "ruby", "php", "go", "rust", "java",
-	"c", "cpp", "csharp", "sql", "yaml", "toml", "markdown", "diff", "dockerfile"
+	"c", "cpp", "csharp", "sql", "yaml", "toml", "markdown", "diff", "dockerfile",
+	"clojure", "elixir", "erlang", "kotlin", "swift", "scala", "haskell", "lua", "perl", "r" //7/19/26 by CC -- aliases (clj, sh, ...) resolve automatically
 	];
 
 var highlighterPromise = undefined; //built once, lazily, on the first post that needs it
