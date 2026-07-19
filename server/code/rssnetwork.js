@@ -11,6 +11,7 @@ const request = require ("request");
 const davesql = require ("davesql"); 
 const turndown = require ("turndown"); //5/3/26 by DW
 const autolinker = require ("autolinker"); //7/13/26 by CC
+const asciidoc = require ("./asciidoc.js"); //7/18/26 by CC -- AsciiDoc posts
 
 var config = {
 	productName: "rssNetwork",
@@ -243,6 +244,7 @@ var config = {
 			whenCreated: convertDate (theItem.whenCreated),
 			whenUpdated: convertDate (theItem.whenUpdated),
 			markdowntext: convertString (theItem.markdowntext),
+			asciidoctext: convertString (theItem.asciidoctext), //7/18/26 by CC -- AsciiDoc source, when the post was written in AsciiDoc
 			outlineJsontext: convertString (theItem.outlineJsontext),
 			imageUrl: convertString (theItem.imageUrl), //5/4/26 by DW
 			author: getAuthor (theItem), //6/8/26 by DW
@@ -360,6 +362,7 @@ var config = {
 			enclosureType: itemRec.enclosureType,
 			enclosureLength: itemRec.enclosureLength,
 			markdowntext: itemRec.markdowntext,
+			asciidoctext: itemRec.asciidoctext, //7/18/26 by CC
 			outlineJsontext: itemRec.outlineJsontext,
 			author: itemRec.author, //5/4/26 by DW
 			};
@@ -408,6 +411,7 @@ var config = {
 			add ("enclosureType", itemRec.enclosureType);
 			add ("enclosureLength", itemRec.enclosureLength);
 			add ("markdowntext", itemRec.markdowntext);
+			add ("asciidoctext", itemRec.asciidoctext); //7/18/26 by CC
 			add ("outlineJsontext", itemRec.outlineJsontext);
 			add ("author", itemRec.author);
 			if (setClause.length === 0) {
@@ -1062,32 +1066,45 @@ var config = {
 							callback ({message});
 							}
 						else {
-							const theNewItem = {
-								title: postRec.title,
-								description: linkifyUrls (postRec.description), //7/13/26 by CC -- #175
-								markdowntext: postRec.markdowntext, //6/3/26 by DW
-								inReplyTo: postRec.inReplyTo,
-								feedUrl: getFeedUrl (userRec.screenname),
-								pubDate: new Date (),
-								author: userRec.screenname, //5/4/26 by DW
-								};
-							addItem (theNewItem, function (err, itemRec) {
-								if (err) {
-									callback (err);
-									}
-								else {
-									updateFeedsOnS3 (userRec, function (err, data) {
-										if (err) {
-											callback (err);
-											}
-										else {
-											itemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW
-											callback (undefined, itemRec);
-											}
-										});
-									updateReplyFeedsOnS3 (itemRec.inReplyTo, userRec.screenname); //7/8/26 by CC
-									}
-								});
+							function finishNewPost (description, asciidoctext) { //7/18/26 by CC
+								const theNewItem = {
+									title: postRec.title,
+									description: description,
+									markdowntext: postRec.markdowntext, //6/3/26 by DW
+									asciidoctext: asciidoctext, //7/18/26 by CC -- raw source, for AsciiDoc posts
+									inReplyTo: postRec.inReplyTo,
+									feedUrl: getFeedUrl (userRec.screenname),
+									pubDate: new Date (),
+									author: userRec.screenname, //5/4/26 by DW
+									};
+								addItem (theNewItem, function (err, itemRec) {
+									if (err) {
+										callback (err);
+										}
+									else {
+										updateFeedsOnS3 (userRec, function (err, data) {
+											if (err) {
+												callback (err);
+												}
+											else {
+												itemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW
+												callback (undefined, itemRec);
+												}
+											});
+										updateReplyFeedsOnS3 (itemRec.inReplyTo, userRec.screenname); //7/8/26 by CC
+										}
+									});
+								}
+							if (postRec.asciidoctext !== undefined) { //7/18/26 by CC -- render AsciiDoc server-side to feed-safe HTML
+								asciidoc.render (postRec.asciidoctext) .then (function (html) {
+									finishNewPost (html, postRec.asciidoctext);
+									}) .catch (function (err) {
+									callback ({message: "Can't add the post because the AsciiDoc couldn't be rendered because " + err.message + "."});
+									});
+								}
+							else {
+								finishNewPost (linkifyUrls (postRec.description), undefined); //7/13/26 by CC -- #175
+								}
 							}
 						}
 					}
@@ -1140,23 +1157,36 @@ var config = {
 											callback ({message});
 											}
 										else {
-											postRec.description = linkifyUrls (postRec.description); //7/13/26 by CC -- #175
-											updateItem (postRec, function (err, itemRec) {
-												if (err) {
-													callback (err);
-													}
-												else {
-													updateFeedsOnS3 (userRec, function (err, data) {
-														if (err) {
-															callback (err);
-															}
-														else {
-															callback (undefined, itemRec);
-															}
-														});
-													updateReplyFeedsOnS3 (existingItemRec.inReplyToNum, userRec.screenname);
-													}
-												});
+											function finishUpdatePost () { //7/18/26 by CC
+												updateItem (postRec, function (err, itemRec) {
+													if (err) {
+														callback (err);
+														}
+													else {
+														updateFeedsOnS3 (userRec, function (err, data) {
+															if (err) {
+																callback (err);
+																}
+															else {
+																callback (undefined, itemRec);
+																}
+															});
+														updateReplyFeedsOnS3 (existingItemRec.inReplyToNum, userRec.screenname);
+														}
+													});
+												}
+											if (postRec.asciidoctext !== undefined) { //7/18/26 by CC -- re-render AsciiDoc on edit
+												asciidoc.render (postRec.asciidoctext) .then (function (html) {
+													postRec.description = html;
+													finishUpdatePost ();
+													}) .catch (function (err) {
+													callback ({message: "Can't update the post because the AsciiDoc couldn't be rendered because " + err.message + "."});
+													});
+												}
+											else {
+												postRec.description = linkifyUrls (postRec.description); //7/13/26 by CC -- #175
+												finishUpdatePost ();
+												}
 											}
 										}
 									}

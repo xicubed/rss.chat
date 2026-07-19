@@ -52,6 +52,7 @@ create table items (
 	whenCreated datetime default current_timestamp,
 	whenUpdated datetime default current_timestamp on update current_timestamp,
 	markdowntext longtext,
+	asciidoctext longtext,
 	outlineJsontext text,
 	flDeleted tinyint (1) not null default 0,
 	primary key (id),
@@ -90,6 +91,7 @@ create table files (
 - `author` is the poster's screenname, indexed because the item-read queries join `users` on it.
 - `inReplyTo` is the `id` of the item this one replies to, for threading.
 - `description` is the HTML the client sent; `markdowntext` is the markdown derived from it via turndown. The feed emits both.
+- `asciidoctext` holds the AsciiDoc source, for posts written in AsciiDoc. The server renders it to sanitized, syntax-highlighted HTML (Asciidoctor + Shiki, with inline styles so the highlighting travels in feeds) and stores that in `description`; the raw source is kept here so the post can be re-edited as AsciiDoc. Empty for posts written any other way.
 - `outlineJsontext` is reserved for outline-typed posts (richer post types per the textcasting spec).
 - `title`, `link`, and the `enclosure*` columns are optional -- most chat-style posts have only `description`.
 - `flDeleted` marks a soft-deleted item. A delete sets the flag rather than removing the row, so reply threads stay intact; the item-reading queries filter it out. Matches FeedLand's `flDeleted`.
@@ -143,6 +145,12 @@ To add the per-user activity counters (`ctHits`, `ctHitsToday`, `whenLastHit`) t
 
 ```sql
 alter table users add column ctHits int not null default 0, add column ctHitsToday int not null default 0, add column whenLastHit datetime;
+```
+
+To add the `asciidoctext` column (raw source for posts written in AsciiDoc) to an existing `items` table:
+
+```sql
+alter table items add column asciidoctext longtext;
 ```
 
 ## An AI can do this install
