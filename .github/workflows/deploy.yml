@@ -38,7 +38,8 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -e
           cd ~/rss.chat
-          git pull --ff-only origin main
+          git fetch --quiet origin main
+          git reset --hard origin/main
           cd server/code
           npm install --no-audit --no-fund
           sudo systemctl restart rsschat
