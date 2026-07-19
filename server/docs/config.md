@@ -182,7 +182,13 @@ Optional. Outside feeds to interleave into the timeline -- another rss.chat inst
 	]
 ```
 
-Each entry is a display name and a feed address, plus an optional `imageUrl` used as the avatar for that feed's items (feeds that carry per-item thumbnails, like Wired's, supply their own).
+Each entry is a display name and a feed address, plus an optional `imageUrl` used as the avatar for that feed's items (feeds that carry per-item thumbnails, like Wired's, supply their own). The order matters twice: it's the order of the checkboxes, and when the same story arrives through two feeds, the first configured feed gets the attribution.
+
+### localSourceLabel
+
+Optional, used with `extraFeeds`. The name shown as the source of this server's own posts -- next to the feed icon on each post, and on the local-posts checkbox. Defaults to `myDomain`.
+
+`"localSourceLabel": "su.perstitio.us"`
 
 ### whitelist
 

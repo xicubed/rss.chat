@@ -1794,13 +1794,18 @@ function handleHttpRequest (theRequest) {
 					homePageText = homePageText.split ("[%" + x + "%]").join (pagetable [x]);
 					}
 				homePageText = homePageText.replace ("<li><a onclick=\"newPostCommand ();\">New post...</a></li>", "<li><a onclick=\"newPostCommand ();\">New post...</a></li>\n										<li><a href=\"/compose\">Compose in AsciiDoc...</a></li>");
-				homePageText = homePageText.replace ("</head>", "<script src=\"/composebridge.js\"></script>\n\t\t</head>");
-				if (config.extraFeeds.length > 0) { //7/19/26 by CC -- a Feeds menu with a checkbox per interleaved feed; composebridge.js wires the toggles
+				const bridgeData = { //7/19/26 by CC -- what composebridge.js needs to build the feed toggles and source labels
+					extraFeeds: extrafeeds.getFeedList (),
+					localSourceLabel: (config.localSourceLabel !== undefined) ? config.localSourceLabel : config.myDomain
+					};
+				homePageText = homePageText.replace ("</head>", "<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n<script src=\"/composebridge.js\"></script>\n\t\t</head>");
+				if (bridgeData.extraFeeds.length > 0) { //7/19/26 by CC -- the same toggles also live on a navbar Feeds menu; composebridge.js syncs and wires both
 					var feedsMenuText = "<li class=\"dropdown\" id=\"idExtraFeedsMenu\">\n";
 					feedsMenuText += "<a href=\"#\" class=\"dropdown-toggle\" data-toggle=\"dropdown\">Feeds&nbsp;<b class=\"caret\"></b></a>\n";
 					feedsMenuText += "<ul class=\"dropdown-menu\">\n";
-					config.extraFeeds.forEach (function (theFeed) {
-						feedsMenuText += "<li><a class=\"extraFeedToggle\" data-xmlurl=\"" + theFeed.xmlUrl + "\"><i class=\"far fa-check-square\"></i>&nbsp;" + theFeed.name + "</a></li>\n";
+					feedsMenuText += "<li><a class=\"extraFeedToggle\" data-feedkey=\"__local__\"><i class=\"far fa-check-square\"></i>&nbsp;" + bridgeData.localSourceLabel + "</a></li>\n";
+					bridgeData.extraFeeds.forEach (function (theFeed) {
+						feedsMenuText += "<li><a class=\"extraFeedToggle\" data-feedkey=\"" + theFeed.xmlUrl + "\"><i class=\"far fa-check-square\"></i>&nbsp;" + theFeed.name + "</a></li>\n";
 						});
 					feedsMenuText += "</ul>\n</li>\n";
 					homePageText = homePageText.replace ("<li class=\"dropdown\" id=\"idDocsMenu\">", feedsMenuText + "<li class=\"dropdown\" id=\"idDocsMenu\">");
