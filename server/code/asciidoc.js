@@ -116,3 +116,6 @@ async function renderAsciidoc (asciidoctext) { //7/18/26 by CC
 	}
 
 exports.render = renderAsciidoc;
+exports.sanitize = function (html) { //7/19/26 by CC -- the same scrubbing the AsciiDoc pipeline gets, for other HTML that arrives from outside (extra feeds)
+	return (sanitizeHtml (html, sanitizeOptions));
+	};

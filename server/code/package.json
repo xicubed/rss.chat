@@ -18,6 +18,7 @@
 		"@asciidoctor/core": "4.0.4",
 		"shiki": "4.3.1",
 		"sanitize-html": "2.17.6",
+		"rss-parser": "3.13.0",
 		"daveappserver": "*",
 		"daverss": "*",
 		"davesql": "*",

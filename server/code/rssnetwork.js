@@ -12,6 +12,7 @@ const davesql = require ("davesql");
 const turndown = require ("turndown"); //5/3/26 by DW
 const autolinker = require ("autolinker"); //7/13/26 by CC
 const asciidoc = require ("./asciidoc.js"); //7/18/26 by CC -- AsciiDoc posts
+const extrafeeds = require ("./extrafeeds.js"); //7/19/26 by CC -- outside feeds interleaved into the timeline
 
 var config = {
 	productName: "rssNetwork",
@@ -50,6 +51,7 @@ var config = {
 	maxRecentItems: 100, //4/29/26 by DW
 	
 	urlExtrasOpml: "https://feedland.social/opml?screenname=davewiner&catname=davesources",
+	extraFeeds: [], //7/19/26 by CC -- outside feeds to interleave into the timeline: [{name, xmlUrl, imageUrl?}, ...]
 	
 	robotsText: "User-agent: *\nDisallow: /getitembyguid\nDisallow: /getiteminfo\n", //7/1/26 by DW
 	
@@ -994,6 +996,7 @@ var config = {
 			urlFeedlandServer: config.urlFeedlandServer,
 			serverVersion: myVersion, //7/1/26 by DW
 			mySqlVersion: config.mysqlVersion, //7/1/26 by DW
+			extraFeeds: extrafeeds.getFeedList (), //7/19/26 by CC -- so the client can draw the feed checkboxes
 			}
 		if (screenname === undefined) {
 			callback (undefined, theData);
@@ -1792,6 +1795,16 @@ function handleHttpRequest (theRequest) {
 					}
 				homePageText = homePageText.replace ("<li><a onclick=\"newPostCommand ();\">New post...</a></li>", "<li><a onclick=\"newPostCommand ();\">New post...</a></li>\n										<li><a href=\"/compose\">Compose in AsciiDoc...</a></li>");
 				homePageText = homePageText.replace ("</head>", "<script src=\"/composebridge.js\"></script>\n\t\t</head>");
+				if (config.extraFeeds.length > 0) { //7/19/26 by CC -- a Feeds menu with a checkbox per interleaved feed; composebridge.js wires the toggles
+					var feedsMenuText = "<li class=\"dropdown\" id=\"idExtraFeedsMenu\">\n";
+					feedsMenuText += "<a href=\"#\" class=\"dropdown-toggle\" data-toggle=\"dropdown\">Feeds&nbsp;<b class=\"caret\"></b></a>\n";
+					feedsMenuText += "<ul class=\"dropdown-menu\">\n";
+					config.extraFeeds.forEach (function (theFeed) {
+						feedsMenuText += "<li><a class=\"extraFeedToggle\" data-xmlurl=\"" + theFeed.xmlUrl + "\"><i class=\"far fa-check-square\"></i>&nbsp;" + theFeed.name + "</a></li>\n";
+						});
+					feedsMenuText += "</ul>\n</li>\n";
+					homePageText = homePageText.replace ("<li class=\"dropdown\" id=\"idDocsMenu\">", feedsMenuText + "<li class=\"dropdown\" id=\"idDocsMenu\">");
+					}
 				theRequest.httpReturn (200, "text/html", homePageText);
 				return (true);
 				}
@@ -1857,7 +1870,14 @@ function handleHttpRequest (theRequest) {
 			getSubscriptionList (httpReturn);
 			return (true);
 		case "/getrecentitems": //4/29/26 by DW
-			getRecentItems (params.screenname, params.ct, httpReturn);
+			getRecentItems (params.screenname, params.ct, function (err, items) { //7/19/26 by CC -- interleave the extra feeds, date-sorted
+				if (err) {
+					httpReturn (err);
+					}
+				else {
+					httpReturn (undefined, extrafeeds.mergeRecent (items, config.maxRecentItems));
+					}
+				});
 			return (true);
 		case "/saveprefs": //5/16/26 by DW 
 			savePrefs (params.emailaddress, params.emailcode, params.jsontext, httpReturn);
@@ -1964,6 +1984,7 @@ function startup () {
 					config [x] = appConfig [x];
 					}
 				updateSubscriptionListOnS3 (); //6/24/26 by DW
+				extrafeeds.start (config.extraFeeds, notifySocketSubscribers); //7/19/26 by CC -- begin polling the interleaved outside feeds
 				utils.runEveryMinute (everyMinute);
 				setInterval (everySecond, 1000); 
 				getMysqlVersion (function (err, mysqlVersion) { //11/18/23 by DW, 2/1/24; 11:22:16 AM by DW

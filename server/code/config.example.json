@@ -13,6 +13,10 @@
 	"prefsPath": "prefs.json",
 	"dataPath": "data/",
 	"flFeedsInDatabase": true,
+	"extraFeeds": [
+		{"name": "rss.chat", "xmlUrl": "https://rss.chat/users/rss.xml"},
+		{"name": "Wired Top Stories", "xmlUrl": "https://www.wired.com/feed/rss"}
+		],
 	"mailSender": "admin@myserver.chat",
 	"confirmEmailSubject": "myserver.chat confirmation",
 	"operationToConfirm": "sign in to myserver.chat",

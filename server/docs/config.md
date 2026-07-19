@@ -171,6 +171,19 @@ The websocket URL the client opens. Empty string when websockets are off.
 
 `"urlWebsocketServerForClient": "wss://myserver.chat/"`
 
+### extraFeeds
+
+Optional. Outside feeds to interleave into the timeline -- another rss.chat instance's everyone-feed, a magazine, anything with an RSS feed. The server polls each feed every few minutes, merges its entries into the timeline date-sorted, and broadcasts new ones over the websocket so they appear live. The client shows a Feeds menu with a checkbox per feed, so each reader chooses their own mix. Items from these feeds are marked `flExtra` in API responses; actions on them (reply, like) link to the item's home site. Leave it out and the feature stays dormant -- that's the default.
+
+```json
+"extraFeeds": [
+	{"name": "rss.chat", "xmlUrl": "https://rss.chat/users/rss.xml"},
+	{"name": "Wired Top Stories", "xmlUrl": "https://www.wired.com/feed/rss"}
+	]
+```
+
+Each entry is a display name and a feed address, plus an optional `imageUrl` used as the avatar for that feed's items (feeds that carry per-item thumbnails, like Wired's, supply their own).
+
 ### whitelist
 
 Optional. An array of email addresses allowed to sign in. Leave it out and anyone can join -- that's the default. Use it during an invite-only phase to limit who can create an account.
