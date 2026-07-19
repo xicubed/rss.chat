@@ -147,7 +147,12 @@ function mergeRecent (localItems, maxCt) { //merge the cached foreign items into
 	}
 function getFeedList () { //what the client needs to draw the checkbox list
 	return (theFeeds.map (function (theFeed) {
-		return ({name: theFeed.config.name, xmlUrl: theFeed.config.xmlUrl});
+		return ({
+			name: theFeed.config.name,
+			xmlUrl: theFeed.config.xmlUrl,
+			group: theFeed.config.group, //7/19/26 by CC -- feeds sharing a group render under one heading
+			shortName: theFeed.config.shortName //the label inside the group ("Backchannel" under "Wired")
+			});
 		}));
 	}
 

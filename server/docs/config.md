@@ -182,7 +182,7 @@ Optional. Outside feeds to interleave into the timeline -- another rss.chat inst
 	]
 ```
 
-Each entry is a display name and a feed address, plus an optional `imageUrl` used as the avatar for that feed's items (feeds that carry per-item thumbnails, like Wired's, supply their own). The order matters twice: it's the order of the checkboxes, and when the same story arrives through two feeds, the first configured feed gets the attribution.
+Each entry is a display name and a feed address, plus an optional `imageUrl` used as the avatar for that feed's items (feeds that carry per-item thumbnails, like Wired's, supply their own). Feeds that belong together can share a `group` ("Wired") and carry a `shortName` ("Backchannel") -- the checkbox list renders them indented under one heading, which keeps long names from crowding the rail. The order matters twice: it's the order of the checkboxes, and when the same story arrives through two feeds, the first configured feed gets the attribution.
 
 ### localSourceLabel
 

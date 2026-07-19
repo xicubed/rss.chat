@@ -105,10 +105,27 @@
 					if (!flReplaced) {
 						leftColumnIcons.push (localEntry);
 						}
-				//one checkbox per interleaved feed, ahead of any trailing icons (the data icon stays last)
+				//one checkbox per interleaved feed, ahead of any trailing icons (the data icon stays last);
+				//feeds sharing a group render under one heading, indented, with their short names
 					var ixFeeds = leftColumnIcons.indexOf (localEntry) + 1;
+					var currentGroup = undefined;
 					bridgeData.extraFeeds.forEach (function (theFeed) {
-						leftColumnIcons.splice (ixFeeds++, 0, makeToggleEntry (theFeed.xmlUrl, theFeed.name, "Show or hide " + theFeed.name + " in the timeline."));
+						if ((theFeed.group !== undefined) && (theFeed.group !== currentGroup)) {
+							leftColumnIcons.splice (ixFeeds++, 0, {
+								name: "feedGroup_" + theFeed.group,
+								title: theFeed.group,
+								icon: "",
+								enabled: false, //a heading, not a button -- the theme grays it and ignores clicks
+								click: function () {
+									}
+								});
+							}
+						currentGroup = theFeed.group;
+						const theEntry = makeToggleEntry (theFeed.xmlUrl, (theFeed.shortName !== undefined) ? theFeed.shortName : theFeed.name, "Show or hide " + theFeed.name + " in the timeline.");
+						if (theFeed.group !== undefined) { //indent under the heading
+							theEntry.icon = "<span style=\"padding-left: 14px\">" + theEntry.icon + "</span>";
+							}
+						leftColumnIcons.splice (ixFeeds++, 0, theEntry);
 						});
 				}
 			catch (err) {
@@ -243,7 +260,7 @@
 
 		document.addEventListener ("DOMContentLoaded", function () {
 			const styleSourceLabels = document.createElement ("style");
-			styleSourceLabels.textContent = ".spanFeedSource { font-size: 13px; color: #657786; margin-left: 5px; white-space: nowrap; }";
+			styleSourceLabels.textContent = ".spanFeedSource { font-size: 13px; color: #657786; margin-left: 5px; white-space: nowrap; }\n.divChat .divChatLeft { width: 155px; }"; //a little wider than the theme's 140px so the feed names fit
 			document.head.appendChild (styleSourceLabels);
 			labelFeedIcons ();
 			const theObserver = new MutationObserver (function () {
