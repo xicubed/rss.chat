@@ -25,8 +25,36 @@ var notifyCallback = undefined;
 const parser = new Parser ({
 	timeout: 15000,
 	headers: {"User-Agent": "rsschat-extrafeeds/0.1"},
-	customFields: {item: [["source", "sourceAttribution"], ["media:thumbnail", "mediaThumbnail"]]}
+	customFields: {item: [["source", "sourceAttribution", {keepArray: true}], ["media:thumbnail", "mediaThumbnail"]]}
 	});
+
+//avatars: an rss.chat-style feed names each item's author feed in <source url="...">,
+//and that feed's channel <image> is the author's avatar. Fetch each author feed
+//once and remember what we learned -- real faces on interleaved posts.
+var avatarCache = new Map (); //source feed url -> image url (or undefined when the feed has none)
+function getSourceInfo (entry) { //the item's <source> element: author name and their feed url
+	const source = (entry.sourceAttribution !== undefined) ? entry.sourceAttribution [0] : undefined;
+	if (source === undefined) {
+		return ({});
+		}
+	if (typeof source === "string") {
+		return ({name: source});
+		}
+	return ({name: source._, feedUrl: (source.$ !== undefined) ? source.$.url : undefined});
+	}
+function fetchAvatar (sourceFeedUrl) { //resolves and caches; safe to call repeatedly
+	if (avatarCache.has (sourceFeedUrl)) {
+		return (Promise.resolve ());
+		}
+	avatarCache.set (sourceFeedUrl, undefined); //so a slow fetch isn't started twice
+	return (parser.parseURL (sourceFeedUrl) .then (function (channel) {
+		if ((channel.image !== undefined) && (channel.image.url !== undefined)) {
+			avatarCache.set (sourceFeedUrl, channel.image.url);
+			}
+		}) .catch (function (err) {
+		console.log ("extrafeeds: no avatar from " + sourceFeedUrl + " -- " + err.message);
+		}));
+	}
 
 function hashGuid (guid) { //a stable synthetic id, well clear of local database ids
 	var theHash = 5381;
@@ -39,22 +67,26 @@ function getAuthor (entry, channelTitle) {
 	if ((entry.creator !== undefined) && (entry.creator.length > 0)) {
 		return (entry.creator);
 		}
-	const source = entry.sourceAttribution;
-	if (typeof source === "string" && source.length > 0) { //rss.chat feeds: <source url="...">Dave Winer</source>
-		return (source);
-		}
-	if ((source !== undefined) && (typeof source._ === "string") && (source._.length > 0)) {
-		return (source._);
+	const sourceName = getSourceInfo (entry).name; //rss.chat feeds: <source url="...">Dave Winer</source>
+	if ((sourceName !== undefined) && (sourceName.length > 0)) {
+		return (sourceName);
 		}
 	return (channelTitle);
 	}
-function getImageUrl (feedConfig, entry) {
+function getImageUrl (feedConfig, channel, entry) { //the author's real avatar when we know it, then the configured image, the story's thumbnail, the channel's image
+	const sourceFeedUrl = getSourceInfo (entry).feedUrl;
+	if ((sourceFeedUrl !== undefined) && (avatarCache.get (sourceFeedUrl) !== undefined)) {
+		return (avatarCache.get (sourceFeedUrl));
+		}
 	if (feedConfig.imageUrl !== undefined) {
 		return (feedConfig.imageUrl);
 		}
 	const thumb = entry.mediaThumbnail;
 	if ((thumb !== undefined) && (thumb.$ !== undefined) && (thumb.$.url !== undefined)) {
 		return (thumb.$.url);
+		}
+	if ((channel.image !== undefined) && (channel.image.url !== undefined)) {
+		return (channel.image.url);
 		}
 	return (undefined);
 	}
@@ -72,7 +104,7 @@ function convertEntry (feedConfig, channel, entry) {
 		feedUrl: feedConfig.xmlUrl,
 		feedTitle: feedConfig.name,
 		feedLink: channel.link,
-		imageUrl: getImageUrl (feedConfig, entry),
+		imageUrl: getImageUrl (feedConfig, channel, entry),
 		flExtra: true,
 		extraFeedName: feedConfig.name
 		};
@@ -86,6 +118,18 @@ function convertEntry (feedConfig, channel, entry) {
 	}
 function pollFeed (theFeed) {
 	parser.parseURL (theFeed.config.xmlUrl) .then (function (channel) {
+		const entries = (channel.items || []).slice (0, maxItemsPerFeed);
+		const avatarFetches = []; //learn the authors' avatars before converting, so the items carry them
+		entries.forEach (function (entry) {
+			const sourceFeedUrl = getSourceInfo (entry).feedUrl;
+			if ((sourceFeedUrl !== undefined) && !avatarCache.has (sourceFeedUrl)) {
+				avatarFetches.push (fetchAvatar (sourceFeedUrl));
+				}
+			});
+		return (Promise.all (avatarFetches) .then (function () {
+			return (channel);
+			}));
+		}) .then (function (channel) {
 		const entries = (channel.items || []).slice (0, maxItemsPerFeed);
 		entries.forEach (function (entry) {
 			const guid = entry.guid || entry.link;

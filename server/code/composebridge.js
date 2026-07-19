@@ -260,7 +260,7 @@
 
 		document.addEventListener ("DOMContentLoaded", function () {
 			const styleSourceLabels = document.createElement ("style");
-			styleSourceLabels.textContent = ".spanFeedSource { font-size: 13px; color: #657786; margin-left: 6px; white-space: nowrap; }\na.aFeedIcon:hover .spanFeedSource { text-decoration: underline; }\n.divChat .divChatLeft { width: 155px; }"; //label margin is the space after the rss icon; a little wider than the theme's 140px so the feed names fit
+			styleSourceLabels.textContent = ".spanFeedSource { font-size: 13px; color: #657786; margin-left: 10px; white-space: nowrap; }\na.aFeedIcon:hover .spanFeedSource { text-decoration: underline; }\n.divChat .divChatLeft { width: 155px; }"; //label margin is the space after the rss icon; a little wider than the theme's 140px so the feed names fit
 			document.head.appendChild (styleSourceLabels);
 			labelFeedIcons ();
 			const theObserver = new MutationObserver (function () {
