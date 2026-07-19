@@ -1797,7 +1797,8 @@ function handleHttpRequest (theRequest) {
 				const bridgeData = { //7/19/26 by CC -- what composebridge.js needs to build the feed toggles and source labels
 					extraFeeds: extrafeeds.getFeedList (),
 					localSourceLabel: (config.localSourceLabel !== undefined) ? config.localSourceLabel : config.myDomain,
-					crossPostTargets: (config.crossPostTargets !== undefined) ? config.crossPostTargets : [] //so the timeline's post menu can cross-post directly
+					crossPostTargets: (config.crossPostTargets !== undefined) ? config.crossPostTargets : [], //so the timeline's post menu can cross-post directly
+					maxTimelineItems: config.maxRecentItems //how deep the timeline's infinite scroll can go
 					};
 				homePageText = homePageText.replace ("</head>", "<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n<script src=\"/composebridge.js\"></script>\n\t\t</head>");
 				if (bridgeData.extraFeeds.length > 0) { //7/19/26 by CC -- the same toggles also live on a navbar Feeds menu; composebridge.js syncs and wires both
@@ -1845,6 +1846,16 @@ function handleHttpRequest (theRequest) {
 			return (true);
 		case "/renderasciidoc": //7/19/26 by CC -- authenticated preview: asciidoctext in, {html} out
 			renderAsciidocPreview (params.emailaddress, params.emailcode, params.asciidoctext, httpReturn);
+			return (true);
+		case "/images/lambda.svg": //7/19/26 by CC -- mikeL's avatar, drawn by the server: a lambda at a terminal prompt
+			fs.readFile ("lambda.svg", "utf8", function (err, svgtext) {
+				if (err) {
+					theRequest.httpReturn (404, "text/plain", "Not found.");
+					}
+				else {
+					theRequest.httpReturn (200, "image/svg+xml", svgtext);
+					}
+				});
 			return (true);
 		case "/composebridge.js": //7/19/26 by CC -- the script the served home page injects; see composebridge.js
 			fs.readFile ("composebridge.js", "utf8", function (err, jstext) {
