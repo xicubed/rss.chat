@@ -1198,6 +1198,9 @@ var config = {
 												}
 											else {
 												postRec.description = linkifyUrls (postRec.description); //7/13/26 by CC -- #175
+												if (postRec.description !== undefined) { //7/19/26 by CC -- the edit replaced the body without AsciiDoc source, so the post is no longer an AsciiDoc post; clear the stored source so a later AsciiDoc edit can't resurrect stale content
+													postRec.asciidoctext = "";
+													}
 												finishUpdatePost ();
 												}
 											}
@@ -1253,6 +1256,35 @@ var config = {
 					}
 				}
 			});
+		}
+	function renderAsciidocPreview (email, code, asciidoctext, callback) { //7/19/26 by CC -- live preview for composers: the same pipeline a post goes through, so the preview is exactly what publishing would produce
+		if (isEmailBlocked (email)) {
+			callback ({message: "Can't render the preview because the user is not authorized."});
+			}
+		else {
+			getUserInfoByEmail (email, function (err, userRec) {
+				if (err) {
+					callback (err);
+					}
+				else {
+					if ((userRec === undefined) || (userRec.emailSecret !== code)) {
+						callback ({message: "Can't render the preview because the authorization is not correct."});
+						}
+					else {
+						if (asciidoctext === undefined) {
+							callback ({message: "Can't render the preview because no asciidoctext was provided."});
+							}
+						else {
+							asciidoc.render (asciidoctext) .then (function (html) {
+								callback (undefined, {html});
+								}) .catch (function (err) {
+								callback ({message: "Can't render the preview because " + err.message + "."});
+								});
+							}
+						}
+					}
+				});
+			}
 		}
 	function deletePost (email, code, id, callback) { //6/12/26 by DW
 		validateUser (email, code, "delete", function (err, userRec) {
@@ -1769,6 +1801,19 @@ function handleHttpRequest (theRequest) {
 			return (true);
 		case "/updatepost": //5/21/26 by DW
 			updatePost (params.emailaddress, params.emailcode, params.jsontext, httpReturn);
+			return (true);
+		case "/renderasciidoc": //7/19/26 by CC -- authenticated preview: asciidoctext in, {html} out
+			renderAsciidocPreview (params.emailaddress, params.emailcode, params.asciidoctext, httpReturn);
+			return (true);
+		case "/compose": //7/19/26 by CC -- the AsciiDoc composer page: source pane, live preview, publish
+			fs.readFile ("compose.html", "utf8", function (err, htmltext) {
+				if (err) {
+					theRequest.httpReturn (500, "text/plain", "Can't serve the composer because the page file couldn't be read.");
+					}
+				else {
+					theRequest.httpReturn (200, "text/html", htmltext);
+					}
+				});
 			return (true);
 		case "/deletepost": //6/12/26 AM by DW
 			deletePost (params.emailaddress, params.emailcode, params.id, httpReturn);

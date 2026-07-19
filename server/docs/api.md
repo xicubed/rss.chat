@@ -78,11 +78,13 @@ All writing calls are **authenticated** POSTs.
 
 The server stamps the author, the publication date, and the feed it belongs to -- those are facts about the authenticated caller, not things the caller gets to claim. The response is the completed item record, including the new `id` and `guid`. Publishing also rebuilds and republishes the author's feeds on static storage, and if the post is a reply, the parent post's comments feed and the parent author's feeds too -- the interop machinery rides along on every write.
 
-**`/updatepost?jsontext=X`** -- edit a post. Same `jsontext` shape plus a required `id`. Only the author can update a post; the response is the updated item record, and feeds republish as above.
+**`/updatepost?jsontext=X`** -- edit a post. Same `jsontext` shape plus a required `id`. Only the author can update a post; the response is the updated item record, and feeds republish as above. One fidelity rule: an update that carries `description` but no `asciidoctext` clears any stored AsciiDoc source -- the edit replaced the rendered body, so the old source no longer describes the post and keeping it would let a later AsciiDoc edit resurrect stale content. To edit an AsciiDoc post *as* AsciiDoc, send `asciidoctext` and the server re-renders it.
 
 **`/deletepost?id=N`** -- delete a post. The delete is soft -- the row stays so reply threads hold together, but the post disappears from every feed and every read call answers that it's been deleted. Only the author can delete a post.
 
 **`/togglelike?id=N`** -- like a post, or take the like back if it's already there. One call, both directions. The response is the freshly-read item record, so the caller sees the new `ctLikes` and `flLiked` without a second call.
+
+**`/renderasciidoc?asciidoctext=X`** -- render AsciiDoc without publishing anything: the same pipeline `/newpost` runs, so the returned `{"html": ...}` is exactly what publishing that source would produce. This is what a composer uses for live preview. Authenticated so the render engine isn't an open resource; nothing is stored.
 
 **`/saveprefs?jsontext=X`** -- store the caller's preferences object on their user record. The prefs are the client's business -- the server stores what it's given and returns it in `/getuserdata`. The shipped client keeps its display name, feed metadata, and avatar URL here.
 
