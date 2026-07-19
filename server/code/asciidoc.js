@@ -70,6 +70,21 @@ const sanitizeOptions = {
 
 const highlightRe = /<pre class="highlight"><code class="language-([^"]+)"[^>]*>([\s\S]*?)<\/code><\/pre>/g;
 
+function importantizeStyles (html) { //7/19/26 by CC -- the classic theme flattens post HTML with `color: inherit !important`, which beats plain inline styles; an inline style that is itself !important is the one thing that outranks it, so highlighted code keeps its colors in the timeline
+	return (html.replace (/style="([^"]*)"/g, function (match, decls) {
+		const boosted = decls.split (";")
+			.map (function (d) {
+				d = d.trim ();
+				return ((d.length === 0 || d.indexOf ("!important") !== -1) ? d : d + " !important");
+				})
+			.filter (function (d) {
+				return (d.length > 0);
+				})
+			.join (";");
+		return ("style=\"" + boosted + "\"");
+		}));
+	}
+
 async function renderAsciidoc (asciidoctext) { //7/18/26 by CC
 	let html = asciidoctor.convert (asciidoctext, {safe: "secure"});
 	if (html && typeof html.then === "function") { //this Asciidoctor.js build returns a Promise
@@ -89,7 +104,7 @@ async function renderAsciidoc (asciidoctext) { //7/18/26 by CC
 				return (match); //unknown language -> leave as a plain code block
 				}
 			try {
-				return (hl.codeToHtml (decodeEntities (body), {lang, theme: highlightTheme}));
+				return (importantizeStyles (hl.codeToHtml (decodeEntities (body), {lang, theme: highlightTheme})));
 				}
 			catch (err) {
 				return (match);
