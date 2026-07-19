@@ -204,7 +204,8 @@ function getFeedList () { //what the client needs to draw the checkbox list
 			name: theFeed.config.name,
 			xmlUrl: theFeed.config.xmlUrl,
 			group: theFeed.config.group, //7/19/26 by CC -- feeds sharing a group render under one heading
-			shortName: theFeed.config.shortName //the label inside the group ("Backchannel" under "Wired")
+			shortName: theFeed.config.shortName, //the label inside the group ("Backchannel" under "Wired")
+			groupUrl: theFeed.config.groupUrl //when set, the group heading links here (wired.com for "Wired")
 			});
 		}));
 	}

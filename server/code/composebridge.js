@@ -111,12 +111,17 @@
 					var currentGroup = undefined;
 					bridgeData.extraFeeds.forEach (function (theFeed) {
 						if ((theFeed.group !== undefined) && (theFeed.group !== currentGroup)) {
+							const groupUrl = theFeed.groupUrl; //when the group has a home page, its heading links there
 							leftColumnIcons.splice (ixFeeds++, 0, {
 								name: "feedGroup_" + theFeed.group,
 								title: theFeed.group,
-								icon: "",
-								enabled: false, //a heading, not a button -- the theme grays it and ignores clicks
+								icon: (groupUrl !== undefined) ? "<i class=\"fas fa-external-link-alt\" style=\"font-size: 11px\"></i>" : "",
+								tooltip: (groupUrl !== undefined) ? ("Open " + theFeed.group + "'s website.") : undefined,
+								enabled: (groupUrl !== undefined),
 								click: function () {
+									if (groupUrl !== undefined) {
+										window.open (groupUrl, "_blank");
+										}
 									}
 								});
 							}
@@ -172,6 +177,97 @@
 		if (typeof timelineItemMenu !== "undefined") {
 			patchClick (timelineItemMenu, "edit", true);
 			patchClick (timelineItemMenu, "delete", false);
+			}
+
+	//cross-post from the timeline: one menu command per configured target, right on
+	//the post's three-dot menu -- no hunting for the post's id. Shares credentials
+	//and the local-to-remote id map with /compose (same localStorage), so a post
+	//mirrored from either place updates in place from either place.
+		function crossPostItemTo (target, item) {
+			function say (theMessage) {
+				if (typeof alertDialog !== "undefined") {
+					alertDialog (theMessage);
+					}
+				else {
+					alert (theMessage);
+					}
+				}
+			if (item.flExtra) {
+				say ("That post is from " + (item.extraFeedName || "another feed") + " -- cross-posting is for this site's own posts.");
+				return;
+				}
+			var storedCreds = JSON.parse (localStorage.crossPostCreds || "{}");
+			if (storedCreds [target.url] === undefined) {
+				const email = prompt ("Your email on " + target.name + ":");
+				if (!email) {
+					return;
+					}
+				const code = prompt ("Your " + target.name + " code:");
+				if (!code) {
+					return;
+					}
+				storedCreds [target.url] = {email: email.trim (), code: code.trim ()};
+				localStorage.crossPostCreds = JSON.stringify (storedCreds);
+				}
+			const creds = storedCreds [target.url];
+			var theMap = JSON.parse (localStorage.crossPostMap || "{}");
+			const remoteId = (theMap [target.url] !== undefined) ? theMap [target.url] [item.id] : undefined;
+			const postRec = {description: item.description};
+			if (item.title !== undefined) {
+				postRec.title = item.title;
+				}
+			if (item.markdowntext !== undefined) {
+				postRec.markdowntext = item.markdowntext;
+				}
+			var path = "newpost";
+			if (remoteId !== undefined) {
+				path = "updatepost";
+				postRec.id = remoteId;
+				}
+			const qs = new URLSearchParams ({emailaddress: creds.email, emailcode: creds.code, jsontext: JSON.stringify (postRec)});
+			fetch (target.url + path + "?" + qs.toString (), {method: "POST"}) .then (function (response) {
+				response.text () .then (function (text) {
+					if (response.ok) {
+						const remoteItem = JSON.parse (text);
+						if (remoteId === undefined) {
+							if (theMap [target.url] === undefined) {
+								theMap [target.url] = {};
+								}
+							theMap [target.url] [item.id] = remoteItem.id;
+							localStorage.crossPostMap = JSON.stringify (theMap);
+							}
+						window.open (remoteItem.guid || (target.url + "?id=" + remoteItem.id), "_blank"); //show the mirror -- opening it is the success message
+						}
+					else {
+						if (text.indexOf ("authorization") !== -1) { //bad code -- forget it so the next try asks again
+							delete storedCreds [target.url];
+							localStorage.crossPostCreds = JSON.stringify (storedCreds);
+							}
+						say (target.name + ": " + text);
+						}
+					});
+				}) .catch (function (err) {
+				say (target.name + ": " + err.message);
+				});
+			}
+		if ((typeof timelineItemMenu !== "undefined") && (bridgeData.crossPostTargets !== undefined) && (bridgeData.crossPostTargets.length > 0)) {
+			try {
+				timelineItemMenu.push ({flDivider: true});
+				bridgeData.crossPostTargets.forEach (function (target) {
+					timelineItemMenu.push ({
+						name: "crossPost_" + target.url,
+						display: "Cross-post to " + target.name + "...",
+						enabled: true,
+						tooltip: "Publish this post on " + target.name + " too (or update the copy already there).",
+						click: function (ev) {
+							crossPostItemTo (target, ev.item);
+							}
+						});
+					});
+				}
+			catch (err) {
+				console.log ("composebridge: couldn't add cross-post menu -- " + err.message);
+				}
 			}
 
 	//let enabled extra feeds through the websocket filter (the shipped function is disabled)

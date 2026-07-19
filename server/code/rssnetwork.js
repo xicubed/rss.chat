@@ -1796,7 +1796,8 @@ function handleHttpRequest (theRequest) {
 				homePageText = homePageText.replace ("<li><a onclick=\"newPostCommand ();\">New post...</a></li>", "<li><a onclick=\"newPostCommand ();\">New post...</a></li>\n										<li><a href=\"/compose\">Compose in AsciiDoc...</a></li>");
 				const bridgeData = { //7/19/26 by CC -- what composebridge.js needs to build the feed toggles and source labels
 					extraFeeds: extrafeeds.getFeedList (),
-					localSourceLabel: (config.localSourceLabel !== undefined) ? config.localSourceLabel : config.myDomain
+					localSourceLabel: (config.localSourceLabel !== undefined) ? config.localSourceLabel : config.myDomain,
+					crossPostTargets: (config.crossPostTargets !== undefined) ? config.crossPostTargets : [] //so the timeline's post menu can cross-post directly
 					};
 				homePageText = homePageText.replace ("</head>", "<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n<script src=\"/composebridge.js\"></script>\n\t\t</head>");
 				if (bridgeData.extraFeeds.length > 0) { //7/19/26 by CC -- the same toggles also live on a navbar Feeds menu; composebridge.js syncs and wires both
