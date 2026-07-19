@@ -16,7 +16,7 @@
 const Parser = require ("rss-parser");
 const asciidoc = require ("./asciidoc.js");
 
-const maxItemsPerFeed = 25;
+const maxItemsPerFeed = 50; //7/19/26 by CC -- was 25; deeper cache feeds the timeline's infinite scroll
 const pollEveryMinutes = 5;
 
 var theFeeds = []; //one entry per configured feed: {config, items, seenGuids, flFirstPoll}

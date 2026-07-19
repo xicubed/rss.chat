@@ -307,14 +307,19 @@
 				};
 			}
 
-	//filter the timeline by the checkboxes
+	//filter the timeline by the checkboxes, and load it deep: the timeline asks for
+	//everything the server's merged cache holds, not just the first hundred, so you
+	//can scroll all the way back to the horizon of what the feeds remember. (The
+	//pool is bounded -- feeds only publish their recent entries -- so one deep fetch
+	//IS the whole scrollback; no paging machinery needed until history persists.)
 		const watchForApi = setInterval (function () {
 			if ((typeof globals !== "undefined") && (globals.myRssNetwork !== undefined)) {
 				clearInterval (watchForApi);
 				try {
 					const originalGetRecentItems = globals.myRssNetwork.getRecentItems;
 					globals.myRssNetwork.getRecentItems = function (ct, callback) {
-						originalGetRecentItems (ct, function (err, items) {
+						const wanted = Math.max (Number (ct) || 0, (bridgeData.maxTimelineItems !== undefined) ? bridgeData.maxTimelineItems : 100);
+						originalGetRecentItems (wanted, function (err, items) {
 							if (!err && Array.isArray (items)) {
 								items = items.filter (function (item) {
 									if (isLocalItem (item)) {
