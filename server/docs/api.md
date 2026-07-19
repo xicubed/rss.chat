@@ -68,10 +68,11 @@ Try it: [https://rss.chat/feed?screenname=dave](https://rss.chat/feed?screenname
 
 All writing calls are **authenticated** POSTs.
 
-**`/newpost?jsontext=X`** -- publish a post. `jsontext` is a JSON-encoded object with these fields, all optional except `description`:
+**`/newpost?jsontext=X`** -- publish a post. `jsontext` is a JSON-encoded object with these fields, all optional except the body, which is either `description` or `asciidoctext`:
 
 - `description` -- the post body, as HTML.
 - `markdowntext` -- the body as markdown, if the client has it.
+- `asciidoctext` -- the post body as AsciiDoc. When present, the server renders it to HTML -- structure via Asciidoctor, code blocks syntax-highlighted with inline styles so the colors travel wherever the post travels, then sanitized -- and stores the result as `description`; a `description` sent alongside it is ignored. The source is kept on the item so the post can be re-edited as AsciiDoc. Both AsciiDoc's native `[source,lang]` blocks and markdown-style backtick fences highlight.
 - `title` -- posts can have titles; most don't.
 - `inReplyTo` -- the `id` of the post this one replies to.
 
@@ -92,6 +93,7 @@ Every call that returns posts returns them in this shape. Fields that would be e
 - `id` -- the post's number on this server.
 - `guid` -- the permalink, e.g. `https://rss.chat/?id=204`. This is the post's identity in feeds.
 - `title`, `link`, `description`, `markdowntext` -- what the author wrote. `description` is HTML.
+- `asciidoctext` -- for posts written in AsciiDoc, the raw source; `description` holds what it rendered to. Absent for posts written any other way.
 - `pubDate` -- when it was published.
 - `author` -- the display name (the author's feed title, falling back to their screenname).
 - `screenname` -- the account id. Fixed, where the display name can change.
