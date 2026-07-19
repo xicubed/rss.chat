@@ -181,6 +181,25 @@
 				};
 			}
 
+	//names and avatars on foreign posts go to the author's page on their own site.
+	//Interleaved rss.chat-style items carry a remote handle ("dave@rss.chat"); the
+	//profile lives at that host. Foreign items with no handle (a magazine) get a
+	//quiet no-op instead of a broken local profile lookup.
+		if (typeof avatarClickedCallback !== "undefined") {
+			const originalAvatarClicked = avatarClickedCallback;
+			avatarClickedCallback = function (screenname, ev) {
+				if ((typeof screenname === "string") && (screenname.indexOf ("@") !== -1)) {
+					const ixAt = screenname.indexOf ("@");
+					window.open ("https://" + screenname.slice (ixAt + 1) + "/?screenname=" + encodeURIComponent (screenname.slice (0, ixAt)), "_blank");
+					return;
+					}
+				if (screenname === undefined) {
+					return;
+					}
+				originalAvatarClicked (screenname, ev);
+				};
+			}
+
 	//respect the your-posts checkbox for live items too
 		if (typeof socketItemHandler !== "undefined") {
 			const originalSocketItemHandler = socketItemHandler;
@@ -237,7 +256,7 @@
 				if (theLabel !== undefined) {
 					const spanLabel = document.createElement ("span");
 					spanLabel.className = "spanFeedSource";
-					spanLabel.textContent = theLabel;
+					spanLabel.textContent = "\u00a0" + theLabel; //a real nbsp after the icon -- css margins proved unreliable inside the theme's header
 					node.appendChild (spanLabel); //inside the anchor: icon and name are one link to the feed
 					}
 				});

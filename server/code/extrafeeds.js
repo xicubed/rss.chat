@@ -90,6 +90,14 @@ function getImageUrl (feedConfig, channel, entry) { //the author's real avatar w
 		}
 	return (undefined);
 	}
+function getRemoteScreenname (entry) { //"dave@rss.chat" for an item whose source feed is an rss.chat-style user feed; the client routes clicks on the name to that site's profile page
+	const sourceFeedUrl = getSourceInfo (entry).feedUrl;
+	if (sourceFeedUrl === undefined) {
+		return (undefined);
+		}
+	const m = sourceFeedUrl.match (/^https?:\/\/([^\/]+)\/users\/([^\/]+)\/rss\.xml$/);
+	return ((m !== null) ? (m [2] + "@" + m [1]) : undefined);
+	}
 function convertEntry (feedConfig, channel, entry) {
 	const guid = entry.guid || entry.link;
 	const link = entry.link || ((typeof guid === "string" && guid.indexOf ("http") === 0) ? guid : undefined);
@@ -105,6 +113,7 @@ function convertEntry (feedConfig, channel, entry) {
 		feedTitle: feedConfig.name,
 		feedLink: channel.link,
 		imageUrl: getImageUrl (feedConfig, channel, entry),
+		screenname: getRemoteScreenname (entry), //7/19/26 by CC -- remote handle, e.g. "dave@rss.chat"
 		flExtra: true,
 		extraFeedName: feedConfig.name
 		};
