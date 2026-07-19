@@ -1861,7 +1861,8 @@ function handleHttpRequest (theRequest) {
 					theRequest.httpReturn (500, "text/plain", "Can't serve the composer because the page file couldn't be read.");
 					}
 				else {
-					theRequest.httpReturn (200, "text/html", htmltext);
+					const crossPostTargets = (config.crossPostTargets !== undefined) ? config.crossPostTargets : []; //7/19/26 by CC -- other rss.chat servers this composer can also post to
+					theRequest.httpReturn (200, "text/html", htmltext.replace ("[%crossPostTargets%]", utils.jsonStringify (crossPostTargets)));
 					}
 				});
 			return (true);

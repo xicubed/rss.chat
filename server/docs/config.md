@@ -190,6 +190,16 @@ Optional, used with `extraFeeds`. The name shown as the source of this server's 
 
 `"localSourceLabel": "su.perstitio.us"`
 
+### crossPostTargets
+
+Optional. Other rss.chat servers the `/compose` page can also post to -- same software, same `/newpost`, called straight from the writer's browser. Each gets a checkbox in the composer; the writer's credentials for the other server are asked for once and kept in their browser's localStorage, never on this server. New posts only -- an update here has no way to name the post over there.
+
+```json
+"crossPostTargets": [
+	{"name": "demo.rss.chat", "url": "https://demo.rss.chat/"}
+	]
+```
+
 ### whitelist
 
 Optional. An array of email addresses allowed to sign in. Leave it out and anyone can join -- that's the default. Use it during an invite-only phase to limit who can create an account.

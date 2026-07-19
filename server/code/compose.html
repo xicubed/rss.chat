@@ -143,6 +143,7 @@
 			<a class="brand" href="/">&larr; timeline</a>
 			<span class="who" id="idWho"></span>
 			<input class="title" id="idTitle" type="text" placeholder="Title (optional — most posts don't have one)">
+			<span id="idCrossPosts" style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #657786;"></span>
 			<button id="idNew" title="Start a new post">New</button>
 			<button id="idLoad" title="Load one of your AsciiDoc posts by id to edit it">Load&hellip;</button>
 			<button class="primary" id="idPublish">Publish</button>
@@ -163,6 +164,7 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 		<div class="statusbar" id="idStatus">Preview renders through the server &mdash; what you see is exactly what publishing produces, timeline and feed alike.</div>
 		<script>
 			const mem = JSON.parse (localStorage.rssNetworkMemory || "null");
+			const crossPostTargets = [%crossPostTargets%]; //other rss.chat servers this composer can also post to; filled in by the server from config
 			var currentId = undefined, renderSeq = 0, debounceTimer = undefined, flDirty = false;
 
 			function el (id) {
@@ -208,6 +210,58 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 						}
 					});
 				}
+			function crossPostCreds (target, flForget) { //the user's account on the other server, remembered in this browser only
+				var stored = JSON.parse (localStorage.crossPostCreds || "{}");
+				if (flForget) {
+					delete stored [target.url];
+					localStorage.crossPostCreds = JSON.stringify (stored);
+					return (undefined);
+					}
+				if (stored [target.url] === undefined) {
+					const email = prompt ("Your email on " + target.name + ":");
+					if (!email) {
+						return (undefined);
+						}
+					const code = prompt ("Your " + target.name + " code (from that site's sign-in link or its localStorage):");
+					if (!code) {
+						return (undefined);
+						}
+					stored [target.url] = {email: email.trim (), code: code.trim ()};
+					localStorage.crossPostCreds = JSON.stringify (stored);
+					}
+				return (stored [target.url]);
+				}
+			function crossPostTo (target, item) { //same software over there: fire the same /newpost at their server, from this browser
+				const creds = crossPostCreds (target);
+				if (creds === undefined) {
+					setStatus (el ("idStatus").innerHTML + " &mdash; skipped " + target.name + " (no credentials).");
+					return;
+					}
+				const postRec = {description: item.description};
+				if (item.title !== undefined) {
+					postRec.title = item.title;
+					}
+				if (item.markdowntext !== undefined) {
+					postRec.markdowntext = item.markdowntext;
+					}
+				const qs = new URLSearchParams ({emailaddress: creds.email, emailcode: creds.code, jsontext: JSON.stringify (postRec)});
+				fetch (target.url + "newpost?" + qs.toString (), {method: "POST"}) .then (function (response) {
+					response.text () .then (function (text) {
+						if (response.ok) {
+							const remoteItem = JSON.parse (text);
+							setStatus (el ("idStatus").innerHTML + " &mdash; also on <a href=\"" + remoteItem.guid + "\" target=\"_blank\">" + target.name + "</a>");
+							}
+						else {
+							if (text.indexOf ("authorization") !== -1) { //bad code -- forget it so the next try asks again
+								crossPostCreds (target, true);
+								}
+							setStatus (el ("idStatus").innerHTML + " &mdash; <span class=\"error\">" + target.name + ": " + text + "</span>");
+							}
+						});
+					}) .catch (function (err) {
+					setStatus (el ("idStatus").innerHTML + " &mdash; <span class=\"error\">" + target.name + ": " + err.message + "</span>");
+					});
+				}
 			function publish () {
 				const theText = el ("idSource").value;
 				if (theText.trim ().length === 0) {
@@ -226,6 +280,7 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 					}
 				el ("idPublish").disabled = true;
 				setStatus (currentId === undefined ? "Publishing&hellip;" : "Updating&hellip;");
+				const flNewPost = (currentId === undefined);
 				servercall (path, {jsontext: JSON.stringify (postRec)}, "POST", function (err, item) {
 					el ("idPublish").disabled = false;
 					if (err) {
@@ -236,6 +291,14 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 						flDirty = false;
 						el ("idPublish").textContent = "Update";
 						setStatus ("Published: <a href=\"" + item.guid + "\" target=\"_blank\">" + item.guid + "</a> &mdash; further publishes update post " + item.id + ".");
+						if (flNewPost) { //cross-posting mirrors new posts only -- an update here has no way to name the post over there
+							crossPostTargets.forEach (function (target) {
+								const box = document.getElementById ("idCrossPost_" + target.url);
+								if ((box !== null) && box.checked) {
+									crossPostTo (target, item);
+									}
+								});
+							}
 						}
 					});
 				}
@@ -293,6 +356,20 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 				}
 			else {
 				el ("idWho").textContent = "posting as @" + mem.screenname;
+				crossPostTargets.forEach (function (target) { //a checkbox per other server this composer can also post to
+					const label = document.createElement ("label");
+					label.style.cssText = "display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap;";
+					const box = document.createElement ("input");
+					box.type = "checkbox";
+					box.id = "idCrossPost_" + target.url;
+					box.checked = (localStorage ["crossPostOn_" + target.url] === "true");
+					box.addEventListener ("change", function () {
+						localStorage ["crossPostOn_" + target.url] = box.checked ? "true" : "false";
+						});
+					label.appendChild (box);
+					label.appendChild (document.createTextNode ("also " + target.name));
+					el ("idCrossPosts").appendChild (label);
+					});
 				el ("idSource").addEventListener ("input", function () {
 					flDirty = true;
 					clearTimeout (debounceTimer);
