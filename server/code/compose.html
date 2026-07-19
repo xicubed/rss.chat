@@ -231,7 +231,27 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 					}
 				return (stored [target.url]);
 				}
-			function crossPostTo (target, item) { //same software over there: fire the same /newpost at their server, from this browser
+			function remoteIdMap () { //which post over there mirrors which post here, per target, in this browser
+				return (JSON.parse (localStorage.crossPostMap || "{}"));
+				}
+			function getRemoteId (target, localId) {
+				const theMap = remoteIdMap ();
+				return ((theMap [target.url] !== undefined) ? theMap [target.url] [localId] : undefined);
+				}
+			function setRemoteId (target, localId, remoteId) {
+				const theMap = remoteIdMap ();
+				if (theMap [target.url] === undefined) {
+					theMap [target.url] = {};
+					}
+				if (remoteId === undefined) {
+					delete theMap [target.url] [localId];
+					}
+				else {
+					theMap [target.url] [localId] = remoteId;
+					}
+				localStorage.crossPostMap = JSON.stringify (theMap);
+				}
+			function crossPostTo (target, item, flRetry) { //same software over there: first time creates the post on their server, and we remember its id so later publishes update it
 				const creds = crossPostCreds (target);
 				if (creds === undefined) {
 					setStatus (el ("idStatus").innerHTML + " &mdash; skipped " + target.name + " (no credentials).");
@@ -244,16 +264,30 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 				if (item.markdowntext !== undefined) {
 					postRec.markdowntext = item.markdowntext;
 					}
+				const remoteId = getRemoteId (target, item.id);
+				var path = "newpost";
+				if (remoteId !== undefined) {
+					path = "updatepost";
+					postRec.id = remoteId;
+					}
 				const qs = new URLSearchParams ({emailaddress: creds.email, emailcode: creds.code, jsontext: JSON.stringify (postRec)});
-				fetch (target.url + "newpost?" + qs.toString (), {method: "POST"}) .then (function (response) {
+				fetch (target.url + path + "?" + qs.toString (), {method: "POST"}) .then (function (response) {
 					response.text () .then (function (text) {
 						if (response.ok) {
 							const remoteItem = JSON.parse (text);
-							setStatus (el ("idStatus").innerHTML + " &mdash; also on <a href=\"" + remoteItem.guid + "\" target=\"_blank\">" + target.name + "</a>");
+							if (remoteId === undefined) {
+								setRemoteId (target, item.id, remoteItem.id);
+								}
+							setStatus (el ("idStatus").innerHTML + " &mdash; " + ((remoteId === undefined) ? "also on " : "updated on ") + "<a href=\"" + (remoteItem.guid || (target.url + "?id=" + remoteItem.id)) + "\" target=\"_blank\">" + target.name + "</a>");
 							}
 						else {
 							if (text.indexOf ("authorization") !== -1) { //bad code -- forget it so the next try asks again
 								crossPostCreds (target, true);
+								}
+							if ((remoteId !== undefined) && !flRetry && ((text.indexOf ("no item") !== -1) || (text.indexOf ("deleted") !== -1))) { //the mirrored post is gone over there -- recreate it
+								setRemoteId (target, item.id, undefined);
+								crossPostTo (target, item, true);
+								return;
 								}
 							setStatus (el ("idStatus").innerHTML + " &mdash; <span class=\"error\">" + target.name + ": " + text + "</span>");
 							}
@@ -280,7 +314,6 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 					}
 				el ("idPublish").disabled = true;
 				setStatus (currentId === undefined ? "Publishing&hellip;" : "Updating&hellip;");
-				const flNewPost = (currentId === undefined);
 				servercall (path, {jsontext: JSON.stringify (postRec)}, "POST", function (err, item) {
 					el ("idPublish").disabled = false;
 					if (err) {
@@ -291,14 +324,12 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 						flDirty = false;
 						el ("idPublish").textContent = "Update";
 						setStatus ("Published: <a href=\"" + item.guid + "\" target=\"_blank\">" + item.guid + "</a> &mdash; further publishes update post " + item.id + ".");
-						if (flNewPost) { //cross-posting mirrors new posts only -- an update here has no way to name the post over there
-							crossPostTargets.forEach (function (target) {
-								const box = document.getElementById ("idCrossPost_" + target.url);
-								if ((box !== null) && box.checked) {
-									crossPostTo (target, item);
-									}
-								});
-							}
+						crossPostTargets.forEach (function (target) { //mirror to the checked servers: creates over there the first time, updates after (the browser remembers the remote id)
+							const box = document.getElementById ("idCrossPost_" + target.url);
+							if ((box !== null) && box.checked) {
+								crossPostTo (target, item);
+								}
+							});
 						}
 					});
 				}

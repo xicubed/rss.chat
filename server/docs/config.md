@@ -192,7 +192,7 @@ Optional, used with `extraFeeds`. The name shown as the source of this server's 
 
 ### crossPostTargets
 
-Optional. Other rss.chat servers the `/compose` page can also post to -- same software, same `/newpost`, called straight from the writer's browser. Each gets a checkbox in the composer; the writer's credentials for the other server are asked for once and kept in their browser's localStorage, never on this server. New posts only -- an update here has no way to name the post over there.
+Optional. Other rss.chat servers the `/compose` page can also post to -- same software, same `/newpost`, called straight from the writer's browser. Each gets a checkbox in the composer; the writer's credentials for the other server are asked for once and kept in their browser's localStorage, never on this server. The first publish creates the post over there and the writer's browser remembers its id, so later updates mirror as updates.
 
 ```json
 "crossPostTargets": [
