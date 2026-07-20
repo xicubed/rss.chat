@@ -253,7 +253,9 @@
 		if ((typeof timelineItemMenu !== "undefined") && (bridgeData.crossPostTargets !== undefined) && (bridgeData.crossPostTargets.length > 0)) {
 			try {
 				timelineItemMenu.push ({flDivider: true});
-				bridgeData.crossPostTargets.forEach (function (target) {
+				bridgeData.crossPostTargets.filter (function (target) {
+					return (target.type !== "wordpress"); //WordPress targets post from /compose, which carries the wpIdentity library; this page doesn't
+					}) .forEach (function (target) {
 					timelineItemMenu.push ({
 						name: "crossPost_" + target.url,
 						display: "Cross-post to " + target.name + "...",

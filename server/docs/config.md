@@ -194,6 +194,15 @@ Optional, used with `extraFeeds`. The name shown as the source of this server's 
 
 Optional. Other rss.chat servers the `/compose` page can also post to -- same software, same `/newpost`, called straight from the writer's browser. Each gets a checkbox in the composer; the writer's credentials for the other server are asked for once and kept in their browser's localStorage, never on this server. The first publish creates the post over there and the writer's browser remembers its id, so later updates mirror as updates.
 
+A target can also be a WordPress site: give it `"type": "wordpress"` and the site's numeric `idSite` instead of a url. The composer signs the writer on through WordPress.com (via [wpIdentity](https://github.com/scripting/wpIdentity), the same way the wordpress examples do) and posts directly from the browser. A post with no markdown -- an AsciiDoc post -- crosses as its rendered HTML, syntax highlighting included.
+
+```json
+"crossPostTargets": [
+	{"name": "demo.rss.chat", "url": "https://demo.rss.chat/"},
+	{"name": "my blog", "type": "wordpress", "idSite": 123456789}
+	]
+```
+
 ```json
 "crossPostTargets": [
 	{"name": "demo.rss.chat", "url": "https://demo.rss.chat/"}

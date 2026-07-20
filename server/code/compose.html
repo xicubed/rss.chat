@@ -4,6 +4,16 @@
 		<title>Compose — AsciiDoc</title>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<script src="https://s3.amazonaws.com/scripting.com/code/includes/jquery-1.9.1.min.js"></script>
+		<script src="https://s3.amazonaws.com/scripting.com/code/includes/basic/code.js"></script>
+		<script src="https://s3.amazonaws.com/scripting.com/code/wpidentity/client/api2.js"></script>
+		<script>
+			if (typeof alertDialog === "undefined") { //wpidentity leans on Dave's basic includes; make sure its error dialog exists
+				window.alertDialog = function (s) {
+					alert (s);
+					};
+				}
+			</script>
 		<style>
 			* {
 				box-sizing: border-box;
@@ -296,6 +306,64 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 					setStatus (el ("idStatus").innerHTML + " &mdash; <span class=\"error\">" + target.name + ": " + err.message + "</span>");
 					});
 				}
+			var myWordpress = undefined; //set up at startup when a wordpress-type target is configured; sign-on and posting go through wpIdentity, like the wordpress examples
+			function targetKey (target) {
+				return ((target.type === "wordpress") ? ("wp" + target.idSite) : target.url);
+				}
+			function wpMap (mapKey, value) { //which WordPress post mirrors which local post, per target, in this browser
+				var theMap = JSON.parse (localStorage.wpCrossPostMap || "{}");
+				if (value === undefined) {
+					return (theMap [mapKey]);
+					}
+				theMap [mapKey] = value;
+				localStorage.wpCrossPostMap = JSON.stringify (theMap);
+				}
+			function crossPostToWordpress (target, item) {
+				function appendStatus (html) {
+					setStatus (el ("idStatus").innerHTML + " &mdash; " + html);
+					}
+				if ((myWordpress === undefined) || !myWordpress.userIsSignedIn ()) {
+					appendStatus ("<span class=\"error\">" + target.name + ": not connected -- uncheck and recheck the box to connect your WordPress account.</span>");
+					return;
+					}
+				const theUserInfo = myWordpress.getUserInfoSync ();
+				const theDraft = { //the shape the wordpress examples use
+					title: item.title || "",
+					content: (item.markdowntext !== undefined) ? item.markdowntext : (item.description || ""), //AsciiDoc posts have no markdown; their rendered HTML crosses intact, highlighting included
+					categories: [],
+					idPost: undefined,
+					idSite: undefined,
+					flEnablePublish: false,
+					whichEditor: "markdown",
+					author: {id: theUserInfo.idUser, username: theUserInfo.username, name: theUserInfo.name},
+					whenCreated: new Date ()
+					};
+				const mapKey = targetKey (target) + ":" + item.id;
+				const existing = wpMap (mapKey);
+				if (existing === undefined) {
+					myWordpress.addPost (target.idSite, theDraft, function (err, theNewPost) {
+						if (err) {
+							appendStatus ("<span class=\"error\">" + target.name + ": " + err.message + "</span>");
+							}
+						else {
+							wpMap (mapKey, {idPost: theNewPost.idPost, idSite: theNewPost.idSite, url: theNewPost.url});
+							appendStatus ("also on <a href=\"" + theNewPost.url + "\" target=\"_blank\">" + target.name + "</a>");
+							}
+						});
+					}
+				else {
+					theDraft.idPost = existing.idPost;
+					theDraft.idSite = existing.idSite;
+					myWordpress.updatePost (existing.idSite, existing.idPost, theDraft, function (err, theUpdatedPost) {
+						if (err) {
+							appendStatus ("<span class=\"error\">" + target.name + ": " + err.message + "</span>");
+							}
+						else {
+							appendStatus ("updated on <a href=\"" + (existing.url || "#") + "\" target=\"_blank\">" + target.name + "</a>");
+							}
+						});
+					}
+				}
 			function publish () {
 				const theText = el ("idSource").value;
 				if (theText.trim ().length === 0) {
@@ -324,10 +392,15 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 						flDirty = false;
 						el ("idPublish").textContent = "Update";
 						setStatus ("Published: <a href=\"" + item.guid + "\" target=\"_blank\">" + item.guid + "</a> &mdash; further publishes update post " + item.id + ".");
-						crossPostTargets.forEach (function (target) { //mirror to the checked servers: creates over there the first time, updates after (the browser remembers the remote id)
-							const box = document.getElementById ("idCrossPost_" + target.url);
+						crossPostTargets.forEach (function (target) { //mirror to the checked targets: creates over there the first time, updates after (the browser remembers the remote id)
+							const box = document.getElementById ("idCrossPost_" + targetKey (target));
 							if ((box !== null) && box.checked) {
-								crossPostTo (target, item);
+								if (target.type === "wordpress") {
+									crossPostToWordpress (target, item);
+									}
+								else {
+									crossPostTo (target, item);
+									}
 								}
 							});
 						}
@@ -387,15 +460,33 @@ Markdown-style ```lang fences work too. Ctrl/Cmd+Enter publishes."></textarea>
 				}
 			else {
 				el ("idWho").textContent = "posting as @" + mem.screenname;
-				crossPostTargets.forEach (function (target) { //a checkbox per other server this composer can also post to
+				if (crossPostTargets.some (function (t) { return (t.type === "wordpress"); }) && (typeof wordpress !== "undefined")) { //a wordpress target is configured; wake up wpIdentity
+					myWordpress = new wordpress ({
+						serverAddress: "https://wordland.social/",
+						flWebsocketEnabled: false,
+						flWatchSocketForOtherCopies: false
+						});
+					myWordpress.startup (function (err) {
+						if (err) {
+							console.log ("wordpress startup: " + ((err.message !== undefined) ? err.message : err));
+							}
+						});
+					}
+				crossPostTargets.forEach (function (target) { //a checkbox per place this composer can also post to
+					const theKey = targetKey (target);
 					const label = document.createElement ("label");
 					label.style.cssText = "display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap;";
 					const box = document.createElement ("input");
 					box.type = "checkbox";
-					box.id = "idCrossPost_" + target.url;
-					box.checked = (localStorage ["crossPostOn_" + target.url] === "true");
+					box.id = "idCrossPost_" + theKey;
+					box.checked = (localStorage ["crossPostOn_" + theKey] === "true");
 					box.addEventListener ("change", function () {
-						localStorage ["crossPostOn_" + target.url] = box.checked ? "true" : "false";
+						localStorage ["crossPostOn_" + theKey] = box.checked ? "true" : "false";
+						if (box.checked && (target.type === "wordpress") && (myWordpress !== undefined) && !myWordpress.userIsSignedIn ()) {
+							if (confirm ("Connect your WordPress.com account? The page will visit WordPress and come back here.")) {
+								myWordpress.connectWithWordpress ();
+								}
+							}
 						});
 					label.appendChild (box);
 					label.appendChild (document.createTextNode ("also " + target.name));
