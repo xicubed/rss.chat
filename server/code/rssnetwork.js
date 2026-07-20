@@ -1856,7 +1856,12 @@ function handleHttpRequest (theRequest) {
 					crossPostTargets: (config.crossPostTargets !== undefined) ? config.crossPostTargets : [], //so the timeline's post menu can cross-post directly
 					maxTimelineItems: config.maxRecentItems //how deep the timeline's infinite scroll can go
 					};
-				homePageText = homePageText.replace ("</head>", "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"" + config.productNameForDisplay + ": the river\" href=\"/river.xml\">\n<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n<script src=\"/composebridge.js\"></script>\n\t\t</head>");
+				var bridgeScripts = "<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n";
+				if (bridgeData.crossPostTargets.some (function (t) {return (t.type === "wordpress");})) { //7/20/26 by CC -- the timeline can mirror posts to WordPress; it needs the wpIdentity library
+					bridgeScripts += "<script src=\"https://s3.amazonaws.com/scripting.com/code/wpidentity/client/api2.js\"></script>\n";
+					}
+				bridgeScripts += "<script src=\"/composebridge.js\"></script>\n";
+				homePageText = homePageText.replace ("</head>", "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"" + config.productNameForDisplay + ": the river\" href=\"/river.xml\">\n" + bridgeScripts + "\t\t</head>");
 				if (bridgeData.extraFeeds.length > 0) { //7/19/26 by CC -- the same toggles also live on a navbar Feeds menu; composebridge.js syncs and wires both
 					var feedsMenuText = "<li class=\"dropdown\" id=\"idExtraFeedsMenu\">\n";
 					feedsMenuText += "<a href=\"#\" class=\"dropdown-toggle\" data-toggle=\"dropdown\">Feeds&nbsp;<b class=\"caret\"></b></a>\n";

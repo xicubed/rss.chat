@@ -24,6 +24,10 @@
 (function () {
 	const bridgeData = (typeof composeBridgeData !== "undefined") ? composeBridgeData : {extraFeeds: [], localSourceLabel: undefined};
 	const localKey = "__local__";
+	const wpMirrorKey = "__wpmirror__";
+	const wpMirrorTarget = ((bridgeData.crossPostTargets !== undefined) ? bridgeData.crossPostTargets : []).filter (function (t) {
+		return ((t.type === "wordpress") && (t.flMirrorTimeline === true));
+		}) [0]; //when configured, this page mirrors your own posts to WordPress as they cross the socket
 
 	//toggle state -- which feeds are on, per browser
 		function getOffMap () {
@@ -132,6 +136,10 @@
 							}
 						leftColumnIcons.splice (ixFeeds++, 0, theEntry);
 						});
+				//the WordPress mirror gets its own switch at the end of the feed toggles
+					if (wpMirrorTarget !== undefined) {
+						leftColumnIcons.splice (ixFeeds++, 0, makeToggleEntry (wpMirrorKey, "WP mirror", "While this page is open, mirror your posts to " + wpMirrorTarget.name + "."));
+						}
 				}
 			catch (err) {
 				console.log ("composebridge: couldn't build the icon bar -- " + err.message);
@@ -298,10 +306,88 @@
 				};
 			}
 
-	//respect the your-posts checkbox for live items too
+	//the WordPress mirror: the robot that used to need its own tab, living in the
+	//page that's already open. When one of your own posts crosses the socket, it
+	//goes to the configured WordPress site too. Shares the sign-on token and the
+	//id map with /compose (same origin), so a post the composer already
+	//cross-posted is updated, not duplicated.
+		var myWordpress = undefined;
+		if ((wpMirrorTarget !== undefined) && (typeof wordpress !== "undefined")) {
+			try {
+				myWordpress = new wordpress ({
+					serverAddress: "https://wordland.social/",
+					flWebsocketEnabled: false,
+					flWatchSocketForOtherCopies: false
+					});
+				myWordpress.startup (function (err) {
+					if (err) {
+						console.log ("composebridge: wordpress startup -- " + ((err.message !== undefined) ? err.message : err));
+						}
+					});
+				}
+			catch (err) {
+				console.log ("composebridge: couldn't start wordpress -- " + err.message);
+				}
+			}
+		function maybeMirrorToWordpress (theItem) {
+			if ((wpMirrorTarget === undefined) || (myWordpress === undefined) || !feedEnabled (wpMirrorKey)) {
+				return;
+				}
+			if (!isLocalItem (theItem)) {
+				return;
+				}
+			if ((typeof globals === "undefined") || (globals.userData === undefined) || (globals.userData.feedUrl === undefined) || (theItem.feedUrl !== globals.userData.feedUrl)) {
+				return; //your own posts only
+				}
+			if (!myWordpress.userIsSignedIn ()) {
+				return; //connect from /compose; same origin, same token
+				}
+			setTimeout (function () { //give /compose's own cross-post a moment to claim the post in the shared map
+				const mapKey = "wp" + wpMirrorTarget.idSite + ":" + theItem.id;
+				var theMap = JSON.parse (localStorage.wpCrossPostMap || "{}");
+				const theUserInfo = myWordpress.getUserInfoSync ();
+				const theDraft = {
+					title: theItem.title || "",
+					content: (theItem.markdowntext !== undefined) ? theItem.markdowntext : (theItem.description || ""),
+					categories: [],
+					idPost: undefined,
+					idSite: undefined,
+					flEnablePublish: false,
+					whichEditor: "markdown",
+					author: {id: theUserInfo.idUser, username: theUserInfo.username, name: theUserInfo.name},
+					whenCreated: new Date ()
+					};
+				const existing = theMap [mapKey];
+				if (existing === undefined) {
+					myWordpress.addPost (wpMirrorTarget.idSite, theDraft, function (err, theNewPost) {
+						if (err) {
+							console.log ("composebridge: wordpress mirror -- " + err.message);
+							}
+						else {
+							theMap = JSON.parse (localStorage.wpCrossPostMap || "{}"); //reread; the composer may have written meanwhile
+							theMap [mapKey] = {idPost: theNewPost.idPost, idSite: theNewPost.idSite, url: theNewPost.url};
+							localStorage.wpCrossPostMap = JSON.stringify (theMap);
+							console.log ("composebridge: mirrored post " + theItem.id + " to " + wpMirrorTarget.name + " -- " + theNewPost.url);
+							}
+						});
+					}
+				else {
+					theDraft.idPost = existing.idPost;
+					theDraft.idSite = existing.idSite;
+					myWordpress.updatePost (existing.idSite, existing.idPost, theDraft, function (err) {
+						if (err) {
+							console.log ("composebridge: wordpress mirror update -- " + err.message);
+							}
+						});
+					}
+				}, 4000);
+			}
+
+	//respect the your-posts checkbox for live items too, and hand every local item to the mirror
 		if (typeof socketItemHandler !== "undefined") {
 			const originalSocketItemHandler = socketItemHandler;
 			socketItemHandler = function (flNew, theFeed, theItem) {
+				maybeMirrorToWordpress (theItem); //fire-and-forget; it has its own guards
 				if (isLocalItem (theItem) && !feedEnabled (localKey)) {
 					return;
 					}
