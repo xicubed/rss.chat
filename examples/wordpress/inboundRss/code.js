@@ -61,7 +61,7 @@ function addToLog (theEvent, thePost) {
 		when: new Date ().toLocaleString ()
 		});
 
-	const mdtext = shortText (theFeedItem.markdowntext);
+	const mdtext = shortText ((theFeedItem.markdowntext !== undefined) ? theFeedItem.markdowntext : stripMarkup (theFeedItem.description || ""));
 
 	console.log (nowstring () + ", " + theEvent + ", theFeedItem.id = " + theFeedItem.id + ", theDraft.url == " + theDraft.url + ", theFeedItem.markdowntext == " + mdtext + "\n");
 	}
@@ -73,7 +73,7 @@ function getSocketAddress (feedUrl) { //the feed's server broadcasts the firehos
 function findSite (feedUrl) {
 	var theSite = undefined;
 	appConsts.theSites.forEach (function (item) {
-		if (item.feedUrl == feedUrl) {
+		if (item.feedUrl.toLowerCase () == feedUrl.toLowerCase ()) { //7/19/26 by CC -- the server treats feed paths case-insensitively, so we match the way it does
 			theSite = item;
 			}
 		});
@@ -145,7 +145,12 @@ function newWordlandPost (theSite, theFeedItem, callback) {
 			},
 		whenCreated: new Date ()
 		}
-	theDraft.content = processMarkdown (theFeedItem.markdowntext); //fixes up images so they float on the right of the text
+	if (theFeedItem.markdowntext !== undefined) {
+		theDraft.content = processMarkdown (theFeedItem.markdowntext); //fixes up images so they float on the right of the text
+		}
+	else {
+		theDraft.content = theFeedItem.description || ""; //7/19/26 by CC -- a post can arrive with no markdown (rss.chat AsciiDoc posts, or any API poster sending only description); mirror its HTML
+		}
 	theDraft.title = theFeedItem.title; //11/16/25 by DW
 	const idSite = theSite.idSite;
 	myWordpress.addPost (idSite, theDraft, function (err, theNewPost) { //5/7/25 by DW
@@ -167,8 +172,8 @@ function newWordlandPost (theSite, theFeedItem, callback) {
 		});
 	}
 function updateWordlandPost (thePost, theUpdatedItem) {
-	const oldtext = thePost.theFeedItem.markdowntext;
-	const newtext = theUpdatedItem.markdowntext;
+	const oldtext = (thePost.theFeedItem.markdowntext !== undefined) ? thePost.theFeedItem.markdowntext : thePost.theFeedItem.description;
+	const newtext = (theUpdatedItem.markdowntext !== undefined) ? theUpdatedItem.markdowntext : theUpdatedItem.description;
 
 	const oldtitle = thePost.theFeedItem.title;
 	const newtitle = theUpdatedItem.title;
@@ -177,7 +182,7 @@ function updateWordlandPost (thePost, theUpdatedItem) {
 
 	if (flUpdate) {
 		const theDraft = thePost.theDraft;
-		theDraft.content = processMarkdown (newtext);
+		theDraft.content = (theUpdatedItem.markdowntext !== undefined) ? processMarkdown (theUpdatedItem.markdowntext) : (theUpdatedItem.description || "");
 		theDraft.title = newtitle; //11/15/25 by DW
 		thePost.ctUpdates++;
 		thePost.whenLastUpdate = new Date ().toLocaleString ();
@@ -202,7 +207,7 @@ function handleItem (flNew, theItem) {
 	const theSite = findSite (theItem.feedUrl);
 	if (theSite !== undefined) {
 		const msg = (flNew) ? "new" : "updated";
-		const mdtext = shortText (stripMarkup (processMarkdown (theItem.markdowntext)));
+		const mdtext = shortText (stripMarkup ((theItem.markdowntext !== undefined) ? processMarkdown (theItem.markdowntext) : (theItem.description || ""))); //7/19/26 by CC -- narrating a markdown-less post must not crash the handler that was about to mirror it
 		console.log (nowstring () + ", " + msg + " theItem.id == " + theItem.id + ", theItem.feedUrl == " + theItem.feedUrl + ", theItem.markdowntext == " + mdtext);
 
 		const thePost = findPost (theItem.id);
