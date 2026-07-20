@@ -15,7 +15,13 @@
 	"flFeedsInDatabase": true,
 	"extraFeeds": [
 		{"name": "rss.chat", "xmlUrl": "https://rss.chat/users/rss.xml"},
-		{"name": "Wired Top Stories", "xmlUrl": "https://www.wired.com/feed/rss"}
+		{"name": "Wired Top Stories", "shortName": "Top Stories", "group": "Wired", "groupUrl": "https://www.wired.com/", "xmlUrl": "https://www.wired.com/feed/rss"},
+		{"name": "Wired Backchannel", "shortName": "Backchannel", "group": "Wired", "groupUrl": "https://www.wired.com/", "xmlUrl": "https://www.wired.com/feed/category/backchannel/latest/rss"}
+		],
+	"localSourceLabel": "myserver.chat",
+	"crossPostTargets": [
+		{"name": "demo.rss.chat", "url": "https://demo.rss.chat/"},
+		{"name": "my blog", "type": "wordpress", "idSite": 123456789, "flMirrorTimeline": true}
 		],
 	"mailSender": "admin@myserver.chat",
 	"confirmEmailSubject": "myserver.chat confirmation",

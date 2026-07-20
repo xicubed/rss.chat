@@ -4,6 +4,15 @@ How the perstitio.us instance is set up and how it ships. This is one concrete
 deployment of the install described in [../docs/install.md](../docs/install.md);
 read that for the meaning of each config value and the database schema.
 
+Standing up your own copy? Everything here is reusable: the systemd unit
+([rsschat.service](rsschat.service)) needs only its `User` and
+`WorkingDirectory` changed to your account and clone path, the Apache vhost
+([perstitio.us-le-ssl.conf](perstitio.us-le-ssl.conf)) needs your domain and
+cert paths, and every site-specific value (database password, mail
+credentials, feed mix, WordPress site id) lives in the gitignored
+`config.json` -- copy [config.example.json](../code/config.example.json) and
+fill in yours. Nothing personal is baked into the code.
+
 ## The shape of it
 
 - **Host**: AWS Lightsail, Debian 12, one clone of this repo at `/home/admin/rss.chat`.
