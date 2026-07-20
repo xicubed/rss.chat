@@ -64,6 +64,14 @@ Try it: [https://rss.chat/getiteminfo?id=204&format=rss](https://rss.chat/getite
 
 Try it: [https://rss.chat/feed?screenname=dave](https://rss.chat/feed?screenname=dave) and [https://rss.chat/feed?screenname=dave&format=json](https://rss.chat/feed?screenname=dave&format=json)
 
+### The repeater
+
+A server configured with `extraFeeds` (see [config.md](config.md)) carries outside feeds alongside its own posts, and re-emits the whole mix -- like a radio repeater re-transmitting what it hears. Two addresses expose that:
+
+**`/river.xml`** -- everything the server carries, merged and date-sorted, as one RSS feed. Every item names its original feed in its `<source>` element, so attribution survives the hop. Subscribe to it in any reader -- or point another server's `extraFeeds` at it, and that server inherits this one's coverage (repeater linking; the same story arriving twice is deduplicated by guid, so loops don't echo). `/river?format=json` returns the same feed rendered in JSON, like `/feed` does.
+
+**`/data/coverage.opml`** -- the coverage map: an OPML subscription list of every feed this server carries, starting with its own. What you'd read before deciding to link to this repeater.
+
 ### Writing
 
 All writing calls are **authenticated** POSTs.

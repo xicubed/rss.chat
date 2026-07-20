@@ -950,6 +950,62 @@ var config = {
 				}
 			});
 		}
+	function buildRiverFeed (format="xml", callback) { //7/19/26 by CC -- the repeater's re-transmit frequency: everything this server carries -- its own posts and every interleaved outside feed -- merged, date-sorted, and attributed, as one feed. Subscribe to it in any reader, or point another instance's extraFeeds at it to inherit this server's coverage.
+		const headElements = getDefaultHeadElements ();
+		headElements.title = config.productNameForDisplay + ": the river";
+		headElements.link = config.urlServerForClient;
+		headElements.description = "Everything flowing through " + config.myDomain + " -- its own posts and every feed it repeats. Each item names its original feed in its source element.";
+		headElements.urlSelf = config.urlServerForClient + "river.xml";
+		getRecentItems (undefined, config.maxRecentItems, function (err, items) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				const merged = extrafeeds.mergeRecent (items, config.maxRecentItems);
+				const feedItems = buildFeedItems (merged, true); //source attribution on every item -- the station ID
+				const lowerformat = utils.stringLower (format);
+				if (lowerformat === "xml") {
+					callback (undefined, rss.buildRssFeed (headElements, feedItems), lowerformat);
+					}
+				else {
+					if (lowerformat === "json") {
+						callback (undefined, rss.buildJsonFeed (headElements, feedItems), lowerformat);
+						}
+					else {
+						const message = "Can't build the river because the format \"" + lowerformat + "\" is not supported here.";
+						callback ({message});
+						}
+					}
+				}
+			});
+		}
+	function buildCoverageOpml (callback) { //7/19/26 by CC -- the repeater's coverage map: every feed this server carries, as a subscription list
+		const nowstring = new Date ().toGMTString ();
+		var theOutline = {
+			opml: {
+				head: {
+					title: "Coverage map for " + config.myDomain + " -- the feeds this server carries and repeats",
+					dateModified: nowstring
+					},
+				body: {
+					subs: new Array ()
+					}
+				}
+			};
+		theOutline.opml.body.subs.push ({
+			type: "rss",
+			text: (config.localSourceLabel !== undefined) ? config.localSourceLabel : config.myDomain,
+			xmlUrl: config.rssFeedUrl + config.rssFilename
+			});
+		extrafeeds.getFeedList () .forEach (function (theFeed) {
+			theOutline.opml.body.subs.push ({
+				type: "rss",
+				text: theFeed.name,
+				xmlUrl: theFeed.xmlUrl
+				});
+			});
+		callback (undefined, opml.stringify (theOutline));
+		}
 	function updateSubscriptionListOnS3 () {
 		getSubscriptionList (function (err, opmltext) {
 			if (err) {
@@ -1800,7 +1856,7 @@ function handleHttpRequest (theRequest) {
 					crossPostTargets: (config.crossPostTargets !== undefined) ? config.crossPostTargets : [], //so the timeline's post menu can cross-post directly
 					maxTimelineItems: config.maxRecentItems //how deep the timeline's infinite scroll can go
 					};
-				homePageText = homePageText.replace ("</head>", "<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n<script src=\"/composebridge.js\"></script>\n\t\t</head>");
+				homePageText = homePageText.replace ("</head>", "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"" + config.productNameForDisplay + ": the river\" href=\"/river.xml\">\n<script>const composeBridgeData = " + utils.jsonStringify (bridgeData) + ";</script>\n<script src=\"/composebridge.js\"></script>\n\t\t</head>");
 				if (bridgeData.extraFeeds.length > 0) { //7/19/26 by CC -- the same toggles also live on a navbar Feeds menu; composebridge.js syncs and wires both
 					var feedsMenuText = "<li class=\"dropdown\" id=\"idExtraFeedsMenu\">\n";
 					feedsMenuText += "<a href=\"#\" class=\"dropdown-toggle\" data-toggle=\"dropdown\">Feeds&nbsp;<b class=\"caret\"></b></a>\n";
@@ -1821,6 +1877,31 @@ function handleHttpRequest (theRequest) {
 					};
 				return (false); //don't consume, pass it through daveappserver
 				}
+		case "/river.xml": case "/river": //7/19/26 by CC -- the repeater's output: everything this server carries, as one feed. /river takes format=xml|json; /river.xml is the plain address for readers.
+			buildRiverFeed ((theRequest.lowerpath === "/river.xml") ? "xml" : ((params.format !== undefined) ? params.format : "xml"), function (err, theText, theFormat) {
+				if (err) {
+					returnError (err);
+					}
+				else {
+					if (theFormat === "json") {
+						returnJson (undefined, theText);
+						}
+					else {
+						returnXml (undefined, theText);
+						}
+					}
+				});
+			return (true);
+		case "/data/coverage.opml": //7/19/26 by CC -- the repeater's coverage map
+			buildCoverageOpml (function (err, opmltext) {
+				if (err) {
+					returnError (err);
+					}
+				else {
+					theRequest.httpReturn (200, "text/xml", opmltext);
+					}
+				});
+			return (true);
 		case "/feed":
 			getUserFeed (params.screenname, params.format, function (err, theText, theFormat) {
 				if (err) {
