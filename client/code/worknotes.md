@@ -1,3 +1,41 @@
+#### 7/31/26; 9:30 AM ET by CC
+
+**You can add your own menu to the menubar -- the Scripts menu.** Point one new config setting, `urlMenuOpml`, at an OPML file on the web, and the app builds menus from it: every top-level node in the outline becomes a menu in the menubar after Docs, nesting becomes submenus, a node whose text is a single hyphen draws a divider, and comment nodes stay invisible. Choosing a command branches on the node's type -- today a `type="link"` node opens its url in a new tab; other types get their behaviors later. The name says where this is going: it comes from Frontier and Drummer, where the menus run scripts. To change your menus, edit the outline and reload the app -- the server doesn't restart, because the file is read fresh each time the app starts up. The first one is live on rss.chat now, the DW menu, and demo.rss.chat runs DW's test menu -- [testmenu.opml](https://this.how/rsschat/testing/testmenu.opml), which is also the example to start your own from. Questions and reports go in [issue 20](https://github.com/scripting/rss.chat/issues/20). Your server needs to be at v0.6.10 to hand the setting to the client -- see the server worknotes.
+
+#### 7/26/26; 12:49 PM ET by CC
+
+**The RSS.chat network has a name and a front door.** All the open pieces around the app -- every user's RSS feed, the everyone feed, the OPML subscription list, the source namespace, textcasting, markdown in the feeds, the firehose, rssCloud, the API, api.js, the example apps -- were documented in a dozen places but never named as one thing. Now they are: [the RSS.chat network](https://github.com/scripting/rss.chat/tree/main/network), a new top-level page in the repo that maps every piece and says the idea out loud: rss.chat isn't really a product, it's an application built on a network anyone can plug into without asking permission. DW named it and [wrote the case on Scripting News](http://scripting.com/2026/07/26.html); the api.js doc now opens with the same name. Naming by DW, page by CC.
+
+#### 7/25/26; 11:39 AM ET by CC
+
+**The Docs menu now reaches everything.** Two new submenus under Docs: Blog posts, with the Scripting News pieces that tell the rss.chat story -- what it's for, how the ecosystem fits together, today's post about the API -- and Github Repo, with the places a user or developer would want in the repo: the repo home, how to run your own server, the API docs, the example apps, the questions-and-answers thread, and both worknotes pages. Everything about rss.chat is now one click from inside rss.chat. By DW.
+
+#### 7/25/26; 10:56 AM ET by CC
+
+**The hit counter now counts only rss.chat.** When the app starts up it registers a hit, so there's a running count of how much rss.chat is used. But everyone running their own server uses this same client -- and their visitors were being counted too, hits arriving from servers that aren't ours. Now the client checks which server it's serving and only counts when it's on an rss.chat domain. If you run your own install, your traffic is yours alone. Fixed by DW. (Client v0.6.12.)
+
+#### 7/23/26; 7:30 PM ET by CC
+
+**The Return key stopped breaking paragraphs at the wrong spot.** A bug DW reported earlier but couldn't reproduce finally showed itself: paste a chunk of text that includes a link, put the cursor somewhere later in the text, press Return -- and the break landed at the link instead of the cursor, tearing the link out onto its own line. The trick to reproducing it: it only ever happened on the *first* Return after that kind of paste, never again in the same post -- which is exactly what made it so slippery. Now the break lands where the cursor is, and links stay in their sentences. (Theme v0.5.339.)
+
+#### 7/22/26; 6:15 PM ET by CC
+
+**Paste an image into a post -- that is the whole feature.** Copy a screenshot or an image file to the clipboard, click into the composer, paste: a small "Uploading image..." note appears at the cursor and a moment later the picture takes its place, sized to fit the column. Publish it and the image is part of the post, served from your server like everything else you write. It works like Slack and GitHub -- no Upload command, no dialog, nothing to learn. The limit is 2MB per image; paste something bigger and a dialog says so. The Publish button waits politely until every pasted image has finished uploading, so a post can never go out with a half-arrived picture. Rich-text mode only for now -- markdown mode will get the same feature, inserting the image reference as text, over the same plumbing. First image posts in the wild: [demo 227 and 228](https://demo.rss.chat/?id=228) ("We have images.") and [rss.chat 378](https://rss.chat/?id=378). (Theme v0.5.338, with a new uploadMedia call in api.js by DW.)
+
+#### 7/22/26; 10:45 AM ET by CC
+
+**A startup crash that wore two disguises.** If you left the editor open with a draft when you last used the app, the next startup could crash quietly: the app tried to restore your draft before one of its writing tools -- the piece that turns rich text into markdown -- was ready. Everything after the crash never ran, and the damage showed up as two seemingly unrelated bugs: your name missing from the menu bar, and the Publish button refusing to enable while you typed in the body of a post (typing in the title, which takes a different path, still worked -- which is why the bug seemed to be about titles). It surfaced during the demo.rss.chat database migration this morning, was reproducible one minute and gone the next, and the last piece of the puzzle was browser caching: the fix was live but browsers kept running the old code until the cache-buster on the script address changed. Fixed by DW: the converter now starts first thing, and the script address was bumped so every browser picks up the cure. (Client v0.6.11.)
+
+**The Software versions dialog now tells you which database engine the server runs on.** Servers can now run on SQLite as well as MySQL (that's the day's big server-side story -- see the server worknotes), and the dialog's last line follows along: it says "SQLite version" or "MySQL version" to match the actual engine, with the real version number either way. The server sends the engine name in a new `databaseEngine` member of the user-data record, and the client reads it as of v0.6.10. First seen live on scratchpad.rss.chat, the first server running on SQLite.
+
+#### 7/20/26; 5:15 PM ET by CC
+
+**The reply editor got out of your way.** When you reply to a post, the editor used to lead with the post itself — the first few lines, taking up room, an eyesore you'd already read. Now it shows the author's avatar and name, and under the name one quiet line: a wedge and "46 words." Click the wedge and the whole post unfolds, click again and it tucks back away. It starts folded every time, because when you're writing a reply, that's really all you need — who you're answering and how much they said, one click from the full text. (Theme v0.5.331–0.5.337.)
+
+#### 7/19/26; 1:00 PM ET by CC
+
+**Software versions, in one place.** Don Park asked for the version number in a tooltip, for telling a stale cached client from a current one. It went in a different door: the first command in the system menu, formerly About RSS.chat, is now **Software versions** — one dialog with the server address and the versions of everything: server, client, theme, and MySQL. The theme version number that used to sit in the menu bar during rapid UI development is gone — it had one job, confirming you were running the latest theme, and the dialog now covers all of it. Work by DW; his reply to Don is [353](https://rss.chat/?id=353).
+
 #### 7/19/26; 10:15 AM ET by CC
 
 **The goodnight dialog no longer leaves a dead app behind.** When a fresh copy of the app signs on, the older copy puts up a dialog and stops listening — that's the goodnight kiss, from two days ago. But if you dismissed that dialog by clicking outside it instead of clicking OK, the dialog went away and the app just sat there, disconnected. Now the page reloads no matter how the dialog is dismissed — OK, a click outside, or the Escape key all land you in the same place: a fresh copy of the app. (Client v0.6.8.)

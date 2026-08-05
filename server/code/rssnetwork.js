@@ -1,4 +1,4 @@
-var myVersion = "0.5.32", myProductName = "rss.network";
+var myVersion = "0.6.12", myProductName = "rss.network";
 
 const daveappserver = require ("daveappserver");
 const rss = require ("daverss");
@@ -10,14 +10,16 @@ const path = require ("path");
 const request = require ("request");     
 const davesql = require ("davesql"); 
 const turndown = require ("turndown"); //5/3/26 by DW
+const pagedown = require ("pagedown"); //7/27/26 by CC -- #219
 const autolinker = require ("autolinker"); //7/13/26 by CC
 const asciidoc = require ("./asciidoc.js"); //7/18/26 by CC -- AsciiDoc posts
 const extrafeeds = require ("./extrafeeds.js"); //7/19/26 by CC -- outside feeds interleaved into the timeline
+const sanitizeHtml = require ("sanitize-html"); //7/23/26 by CC
 
 var config = {
 	productName: "rssNetwork",
 	productNameForDisplay: "rssNetwork", 
-	urlServerHomePageSource: "http://scripting.com/code/testing/rssnetwork/client/index.html",
+	urlServerHomePageSource: "https://code.scripting.com/rsschat/index.html", //7/23/26 by DW
 	myDomain: "my.network.org",
 	urlServerForClient: "http://my.network.org/",
 	urlWebsocketServerForClient: "",
@@ -28,7 +30,7 @@ var config = {
 	maxFeedItems: 100,
 	
 	rssLanguage: "en-us",
-	rssDocs: "http://cyber.law.harvard.edu/rss/rss.html",
+	rssDocs: "https://cyber.law.harvard.edu/rss/rss.html",
 	rssMaxFeedItems: 100,
 	flRssCloudEnabled: true,
 	rssCloudDomain: "rpc.rsscloud.io",
@@ -50,14 +52,27 @@ var config = {
 	
 	maxRecentItems: 100, //4/29/26 by DW
 	
+	maxMediaUploadBytes: 2 * 1024 * 1024, //7/22/26 by CC -- #188, the limit on one image
+	
 	urlExtrasOpml: "https://feedland.social/opml?screenname=davewiner&catname=davesources",
 	extraFeeds: [], //7/19/26 by CC -- outside feeds to interleave into the timeline: [{name, xmlUrl, imageUrl?}, ...]
 	
-	robotsText: "User-agent: *\nDisallow: /getitembyguid\nDisallow: /getiteminfo\n", //7/1/26 by DW
+	robotsText: "User-agent: *\nDisallow: /getitembyguid\nDisallow: /getiteminfo\nDisallow: /getthread\n", //7/1/26 by DW; getthread added 7/24/26 by CC
 	
 	urlFavicon: "//s3.amazonaws.com/scripting.com/favicon.ico", //7/14/26 by DW
-	
 	flFeedsInDatabase: false, //7/15/26 by DW
+	flRemoveBlanksAtEnd: true, //7/20/26 by DW
+	titleForSublist: undefined, //7/20/26 by DW
+	legalTags: { //7/23/26 by DW
+		allowedTags: ["p", "br", "a", "b", "i", "strong", "em", "img", "blockquote", "ul", "ol", "li", "h3"],
+		allowedAttributes: {
+			a: ["href"],
+			img: ["src", "alt"]
+			}
+		},
+	flNightlyBackup: false, //7/25/26 by CC -- #207
+	backupFolder: "data/backups/", //7/25/26 by CC -- #207
+	urlMenuOpml: "", //7/30/26 by DW
 	};
 
 //misc stuff
@@ -81,7 +96,7 @@ var config = {
 			});
 		}
 	function getMysqlVersion (callback) { //11/18/23 by DW
-		const sqltext = "select version () as version;";
+		const sqltext = (config.database.flUseSqlite) ? "select sqlite_version () as version;" : "select version () as version;"; //7/21/26 by CC
 		davesql.runSqltext (sqltext, function (err, result) {
 			var theVersion = undefined;
 			if (err) {
@@ -104,6 +119,10 @@ var config = {
 		const markdowntext = myTurndown.turndown (htmltext);
 		return (markdowntext);
 		}
+	function getHtmlFromMarkdown (markdowntext) { //7/27/26 by CC -- #219
+		const myConverter = new pagedown.Converter ();
+		return (myConverter.makeHtml (markdowntext));
+		}
 	function notifySocketSubscribers (verb, payload, callbackToQualify) { //6/21/26 by CC -- broadcast inline to our own socket clients; modeled on feedland.js
 		if (config.flWebsocketEnabled) {
 			const flPayloadIsString = false;
@@ -118,13 +137,31 @@ var config = {
 			return (undefined);
 			}
 		else {
+			const fileExtensionsNotDomains = ["md", "zip", "sh", "py"]; //7/20/26 by CC -- #181: file extensions that are also real TLDs
 			const theLinker = new autolinker ({
 				urls: true,
 				email: false,
 				phone: false,
 				stripPrefix: false,
 				stripTrailingSlash: false,
-				newWindow: false
+				newWindow: false,
+				replaceFn: function (match) { //7/20/26 by CC -- #181: a bare name like install.md is a doc name, not a domain
+					if (match.getType () === "url") {
+						if (match.getUrlMatchType () === "tld") { //no scheme, no www
+							const matchedText = utils.stringLower (match.getMatchedText ());
+							var flLooksLikeFilename = false;
+							fileExtensionsNotDomains.forEach (function (extension) {
+								if (matchedText.endsWith ("." + extension)) {
+									flLooksLikeFilename = true;
+									}
+								});
+							if (flLooksLikeFilename) {
+								return (false);
+								}
+							}
+						}
+					return (true);
+					}
 				});
 			return (theLinker.link (htmltext));
 			}
@@ -176,7 +213,229 @@ var config = {
 				}
 			}
 		}
+	function trimTrailingBlankLines (theText) { //7/20/26 by CC
+		if (config.flRemoveBlanksAtEnd) {
+			if (theText === undefined) {
+				return (undefined);
+				}
+			else {
+				const regexTrailingWhitespace = /(\s|&nbsp;)+$/i;
+				const regexEmptyFinalParagraph = /<p>(\s|&nbsp;|<br\s*\/?>)*<\/p>$/i;
+				const regexBreaksBeforeFinalClose = /(\s|&nbsp;|<br\s*\/?>)+<\/p>$/i;
+				var flChanged = true;
+				while (flChanged) {
+					flChanged = false;
+					if (regexTrailingWhitespace.test (theText)) {
+						theText = theText.replace (regexTrailingWhitespace, "");
+						flChanged = true;
+						}
+					if (regexEmptyFinalParagraph.test (theText)) {
+						theText = theText.replace (regexEmptyFinalParagraph, "");
+						flChanged = true;
+						}
+					else {
+						if (regexBreaksBeforeFinalClose.test (theText)) {
+							theText = theText.replace (regexBreaksBeforeFinalClose, "</p>");
+							flChanged = true;
+							}
+						}
+					}
+				return (theText);
+				}
+			}
+		else {
+			return (theText);
+			}
+		}
+	function sanitizeHtmltext (htmltext) { //7/23/26 by CC
+		if (htmltext === undefined) {
+			return (undefined);
+			}
+		else {
+			return (sanitizeHtml (htmltext, config.legalTags));
+			}
+		}
+	function requestIsFromThisMachine (theRequest) { //7/29/26 by CC -- #205
+		const flThroughProxy = (theRequest.sysRequest.headers ["x-forwarded-for"] !== undefined); //behind a proxy the socket address is the proxy's, not the user's
+		if (flThroughProxy) {
+			return (false);
+			}
+		else {
+			const theAddress = theRequest.sysRequest.connection.remoteAddress; //the far end of the connection, not anything the caller can set
+			return ((theAddress === "127.0.0.1") || (theAddress === "::1") || (theAddress === "::ffff:127.0.0.1")); //loopback, in its three spellings
+			}
+		}
+	function httpRequest (url, timeout, headers, callback) { //7/30/26 by DW
+		request (url, function (err, response, data) { 
+			if (err) {
+				callback (err);
+				}
+			else {
+				if (response.statusCode != 200) {
+					callback ({message: "Error: " + data.toString ()});
+					}
+				else {
+					callback (undefined, data.toString ());
+					}
+				}
+			});
+		}
+	
 //sql code
+	function initNewDatabase (callback) { //7/21/26 by CC
+		const theStatements = [
+			"create table if not exists users (screenname text not null collate nocase, emailAddress text collate nocase, emailSecret text, prefs text, ctHits integer not null default 0, ctHitsToday integer not null default 0, whenLastHit text, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, primary key (screenname));",
+			"create index if not exists emailAddress on users (emailAddress);",
+			"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, asciidoctext text, outlineJsontext text, flDeleted integer not null default 0);",
+			"create index if not exists feedUrl on items (feedUrl);",
+			"create index if not exists author on items (author);",
+			"create table if not exists likes (screenname text collate nocase, itemId integer, whenCreated text default current_timestamp, primary key (screenname, itemId));",
+			"create index if not exists itemId on likes (itemId);",
+			"create table if not exists files (path text not null, type text, filecontents text, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, ctSaves integer not null default 1, primary key (path));",
+			"create table if not exists media (id integer primary key, screenname text collate nocase, type text, mediabytes blob, size integer, whenCreated text default current_timestamp);",
+			"create trigger if not exists usersWhenUpdated after update on users begin update users set whenUpdated = datetime ('now') where screenname = new.screenname; end;",
+			"create trigger if not exists itemsWhenUpdated after update on items begin update items set whenUpdated = datetime ('now') where id = new.id; end;"
+			];
+		var ixStatement = 0;
+		function nextStatement () {
+			if (ixStatement >= theStatements.length) {
+				callback ();
+				}
+			else {
+				davesql.runSqltext (theStatements [ixStatement++], function (err) {
+					if (err) {
+						console.log ("initNewDatabase: err.message == " + err.message);
+						}
+					nextStatement ();
+					});
+				}
+			}
+		nextStatement ();
+		}
+	function exportDatabase (f, callback) { //7/21/26 by CC
+		const theTables = ["users", "items", "likes", "files", "media"]; //7/22/26 by CC -- #188
+		const jstruct = new Object ();
+		var ixTable = 0;
+		function nextTable () {
+			if (ixTable >= theTables.length) {
+				fs.writeFile (f, utils.jsonStringify (jstruct), function (err) {
+					if (err) {
+						callback (err);
+						}
+					else {
+						callback (undefined, jstruct);
+						}
+					});
+				}
+			else {
+				const tableName = theTables [ixTable++];
+				davesql.runSqltext ("select * from " + tableName + ";", function (err, result) {
+					if (err) {
+						callback (err);
+						}
+					else {
+						if (tableName === "media") { //7/22/26 by CC -- #188, bytes travel as base64 text
+							result.forEach (function (row) {
+								if (Buffer.isBuffer (row.mediabytes)) {
+									row.mediabytes = row.mediabytes.toString ("base64");
+									}
+								});
+							}
+						jstruct [tableName] = result;
+						nextTable ();
+						}
+					});
+				}
+			}
+		nextTable ();
+		}
+	function importDatabase (f, callback) { //7/21/26 by CC
+		function convertRow (row, tableName) { //dates arrive as ISO strings, nulls insert wrong when encoded -- fix both
+			for (var x in row) {
+				if (row [x] === null) {
+					delete row [x]; //a missing column inserts as null on both engines
+					}
+				else {
+					if ((utils.beginsWith (x, "when")) || (x == "pubDate")) {
+						row [x] = davesql.formatDateTime (row [x]);
+						}
+					}
+				}
+			if ((tableName === "media") && (row.mediabytes !== undefined)) { //7/22/26 by CC -- #188, bytes travel as base64 text
+				row.mediabytes = Buffer.from (row.mediabytes, "base64");
+				}
+			}
+		fs.readFile (f, "utf8", function (err, filetext) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				var jstruct;
+				try {
+					jstruct = JSON.parse (filetext);
+					}
+				catch (err) {
+					callback (err);
+					return;
+					}
+				const theTables = ["users", "items", "likes", "files", "media"]; //7/22/26 by CC -- #188
+				var ixTable = 0, ctRows = 0;
+				function nextTable () {
+					if (ixTable >= theTables.length) {
+						callback (undefined, {ctRows});
+						}
+					else {
+						const tableName = theTables [ixTable++];
+						const theRows = jstruct [tableName];
+						if ((theRows === undefined) || (theRows.length === 0)) {
+							nextTable ();
+							}
+						else {
+							var ixRow = 0;
+							function nextRow () {
+								if (ixRow >= theRows.length) {
+									nextTable ();
+									}
+								else {
+									const row = theRows [ixRow++];
+									convertRow (row, tableName);
+									davesql.runSqltext ("insert into " + tableName + " " + davesql.encodeValues (row), function (err) {
+										if (err) {
+											callback (err);
+											}
+										else {
+											ctRows++;
+											nextRow ();
+											}
+										});
+									}
+								}
+							nextRow ();
+							}
+						}
+					}
+				nextTable ();
+				}
+			});
+		}
+	function backupDatabase (callback) { //7/25/26 by CC -- #207, the nightly backup; modeled on feedlanddatabase.js
+		const now = new Date ();
+		const datestring = now.getFullYear () + "-" + utils.padWithZeros (now.getMonth () + 1, 2) + "-" + utils.padWithZeros (now.getDate (), 2);
+		const f = config.backupFolder + datestring + ".json";
+		utils.sureFilePath (f, function () {
+			exportDatabase (f, function (err, jstruct) {
+				if (err) {
+					console.log ("backupDatabase: err.message == " + err.message);
+					}
+				else {
+					console.log ("backupDatabase: f == " + f);
+					}
+				if (callback !== undefined) {
+					callback (err);
+					}
+				});
+			});
+		}
 	function convertString (theString) {
 		if ((theString === null) || (theString === undefined)) {
 			return (undefined);
@@ -565,6 +824,61 @@ var config = {
 				}
 			});
 		}
+	function getThread (screenname, idPost, callback) { //7/24/26 by CC
+		getItemAndReplies (screenname, idPost, function (err, items) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				var theParent;
+				const theReplies = [];
+				items.forEach (function (itemRec) {
+					if (itemRec.id == idPost) { //the id param travels as a string, the database answers numbers -- the crossing is deliberate
+						theParent = itemRec;
+						}
+					else {
+						theReplies.push (itemRec);
+						}
+					});
+				if (theParent === undefined) {
+					const message = "Can't get the thread for post " + idPost + " because there is no post with that id, or it has been deleted.";
+					callback ({message});
+					}
+				else {
+					var ix = 0;
+					function addReply (theRec) {
+						if (theParent.replies === undefined) {
+							theParent.replies = [];
+							}
+						theParent.replies.push (theRec);
+						nextReply ();
+						}
+					function nextReply () {
+						if (ix >= theReplies.length) {
+							callback (undefined, theParent);
+							}
+						else {
+							const theReply = theReplies [ix++];
+							if (theReply.ctReplies > 0) {
+								getThread (screenname, theReply.id, function (err, subThread) {
+									if (err) {
+										addReply (theReply);
+										}
+									else {
+										addReply (subThread);
+										}
+									});
+								}
+							else {
+								addReply (theReply);
+								}
+							}
+						}
+					nextReply ();
+					}
+				}
+			});
+		}
 	
 //feeds
 	function backfillCommentsFeeds () { //7/8/26 by DW
@@ -627,6 +941,85 @@ var config = {
 					});
 				
 				backfillCommentsFeeds ();
+				}
+			});
+		}
+	function backfillMissingFeeds () { //7/25/26 by CC -- every user has a feed from the moment they exist, even with no posts
+		function feedExists (screenname, callback) { //callback (flExists)
+			const relpath = screenname + "/" + config.rssFilename;
+			if (config.flFeedsInDatabase) {
+				readDatabaseFile (utils.stringLower ("/users/" + relpath), function (err) {
+					if (err) {
+						callback (false);
+						}
+					else {
+						callback (true);
+						}
+					});
+				}
+			else {
+				s3.getObjectMetadata (config.rssS3Path + relpath, function (err) {
+					if (err) {
+						callback (false);
+						}
+					else {
+						callback (true);
+						}
+					});
+				}
+			}
+		function publishEmptyFeed (screenname, callback) {
+			getUserInfoByScreenname (screenname, function (err, userRec) {
+				if ((err) || (userRec === undefined)) {
+					console.log ("backfillMissingFeeds: can't read the user record for " + screenname + ".");
+					callback ();
+					}
+				else {
+					if (userRec.prefs === undefined) { //a user who has never saved prefs
+						userRec.prefs = new Object ();
+						}
+					buildFeedForUser (userRec, "xml", function (err, xmltext) {
+						if (err) {
+							console.log ("backfillMissingFeeds: screenname == " + screenname + ", err.message == " + err.message);
+							callback ();
+							}
+						else {
+							publishFeedFile (screenname + "/" + config.rssFilename, xmltext, function (err) {
+								if (err) {
+									console.log ("backfillMissingFeeds: screenname == " + screenname + ", err.message == " + err.message);
+									}
+								else {
+									console.log ("backfillMissingFeeds: published the feed for " + screenname);
+									}
+								callback ();
+								});
+							}
+						});
+					}
+				});
+			}
+		getAllScreennames (function (err, theNames) {
+			if (err) {
+				console.log ("backfillMissingFeeds: err.message == " + err.message);
+				}
+			else {
+				var ixName = 0;
+				function nextUser () {
+					if (ixName < theNames.length) {
+						const screenname = theNames [ixName++];
+						feedExists (screenname, function (flExists) {
+							if (flExists) {
+								nextUser ();
+								}
+							else {
+								publishEmptyFeed (screenname, function () {
+									nextUser ();
+									});
+								}
+							});
+						}
+					}
+				nextUser ();
 				}
 			});
 		}
@@ -747,7 +1140,7 @@ var config = {
 	function buildFeedForUser (userRec, format="xml", callback) {
 		const headElements = getDefaultHeadElements ();
 		headElements.title = userRec.screenname + " on rss.network";
-		headElements.link = "http://" + config.myDomain + "/";
+		headElements.link = config.urlServerForClient; //8/2/26 by DW
 		headElements.description = "Posts by " + userRec.screenname + " on rss.network";
 		const feedUrl = getFeedUrl (userRec.screenname);
 		headElements.urlSelf = feedUrl; //7/7/26 by DW
@@ -846,7 +1239,7 @@ var config = {
 	function buildFeedForEveryone (feedUrl, callback) { //6/3/26 by DW
 		const headElements = getDefaultHeadElements ();
 		headElements.title = config.myDomain + ": all posts", //6/24/26 by DW
-		headElements.link = "http://" + config.myDomain + "/";
+		headElements.link = config.urlServerForClient; //8/2/26 by DW
 		headElements.description = "Posts from all users on " + config.myDomain;
 		headElements.image = {
 			url: "https://imgs.scripting.com/2017/08/05/loveRss.png",
@@ -871,7 +1264,7 @@ var config = {
 			});
 		}
 	function pingCloud (screenname) {
-		var urlFeed = "http://" + config.myDomain + "/feed?screenname=" + screenname;
+		var urlFeed = config.urlServerForClient + "feed?screenname=" + screenname;
 		rss.cloudPing (undefined, urlFeed, function (err) {
 			if (err) {
 				console.log ("cloudPing error: " + err);
@@ -926,11 +1319,12 @@ var config = {
 				callback (err);
 				}
 			else {
+				const titleForSublist = (config.titleForSublist === undefined) ? "Subscription list for " + myProductName + " running on " + config.myDomain : config.titleForSublist; //7/20/26 by DW
 				const nowstring = new Date ().toGMTString ();
 				var theOutline = {
 					opml: {
 						head: {
-							title: "Subscription list for " + myProductName + " running on " + config.myDomain,
+							title: titleForSublist, //7/20/26 by DW
 							dateModified: nowstring
 							},
 						body: {
@@ -1053,6 +1447,7 @@ var config = {
 			serverVersion: myVersion, //7/1/26 by DW
 			mySqlVersion: config.mysqlVersion, //7/1/26 by DW
 			extraFeeds: extrafeeds.getFeedList (), //7/19/26 by CC -- so the client can draw the feed checkboxes
+			databaseEngine: (config.database.flUseSqlite) ? "SQLite" : "MySQL", //7/21/26 by CC
 			}
 		if (screenname === undefined) {
 			callback (undefined, theData);
@@ -1122,6 +1517,9 @@ var config = {
 				callback ({message});
 				return;
 				}
+			if (postRec.inReplyTo === undefined) { //7/27/26 by CC -- also accept inReplyToNum, the name replies carry when read
+				postRec.inReplyTo = postRec.inReplyToNum;
+				}
 			getUserInfoByEmail (email, function (err, userRec) {
 				if (err) {
 					callback (err);
@@ -1142,7 +1540,7 @@ var config = {
 								const theNewItem = {
 									title: postRec.title,
 									description: description,
-									markdowntext: postRec.markdowntext, //6/3/26 by DW
+									markdowntext: trimTrailingBlankLines (postRec.markdowntext), //6/3/26 by DW; 7/20/26 by CC -- #192
 									asciidoctext: asciidoctext, //7/18/26 by CC -- raw source, for AsciiDoc posts
 									inReplyTo: postRec.inReplyTo,
 									feedUrl: getFeedUrl (userRec.screenname),
@@ -1175,7 +1573,19 @@ var config = {
 									});
 								}
 							else {
-								finishNewPost (linkifyUrls (postRec.description), undefined); //7/13/26 by CC -- #175
+								if ((postRec.description === undefined) && (postRec.markdowntext === undefined)) { //7/27/26 by CC -- #219
+									const message = "Can't add the post because it has no text.";
+									callback ({message});
+									}
+								else {
+									if (postRec.description === undefined) {
+										postRec.description = getHtmlFromMarkdown (postRec.markdowntext);
+										}
+									if (postRec.markdowntext === undefined) {
+										postRec.markdowntext = getMarkdownFromHtml (postRec.description);
+										}
+									finishNewPost (sanitizeHtmltext (linkifyUrls (trimTrailingBlankLines (postRec.description))), undefined); //7/13/26 by CC -- #175; 7/20/26 -- #192; 7/23/26 -- XSS
+									}
 								}
 							}
 						}
@@ -1256,8 +1666,15 @@ var config = {
 													});
 												}
 											else {
-												postRec.description = linkifyUrls (postRec.description); //7/13/26 by CC -- #175
-												if (postRec.description !== undefined) { //7/19/26 by CC -- the edit replaced the body without AsciiDoc source, so the post is no longer an AsciiDoc post; clear the stored source so a later AsciiDoc edit can't resurrect stale content
+												if ((postRec.markdowntext !== undefined) && (postRec.description === undefined)) { //7/27/26 by CC -- #219
+													postRec.description = getHtmlFromMarkdown (postRec.markdowntext);
+													}
+												if ((postRec.description !== undefined) && (postRec.markdowntext === undefined)) { //7/27/26 by CC -- #219
+													postRec.markdowntext = getMarkdownFromHtml (postRec.description);
+													}
+												postRec.description = sanitizeHtmltext (linkifyUrls (trimTrailingBlankLines (postRec.description))); //7/13/26 by CC -- #175; 7/20/26 -- #192; 7/23/26 -- XSS
+												postRec.markdowntext = trimTrailingBlankLines (postRec.markdowntext); //7/20/26 by CC -- #192
+												if (postRec.description !== undefined) { //7/19/26 by CC -- the edit replaced the body without AsciiDoc source, so the post is no longer an AsciiDoc post; clear the stored source
 													postRec.asciidoctext = "";
 													}
 												finishUpdatePost ();
@@ -1390,8 +1807,70 @@ var config = {
 				}
 			});
 		}
+	function uploadMedia (email, code, type, base64text, callback) { //7/22/26 by CC -- #188
+		if (isEmailBlocked (email)) {
+			const message = "Can't upload the media item because the user is not authorized.";
+			callback ({message});
+			}
+		else {
+			getUserInfoByEmail (email, function (err, userRec) {
+				if (err) {
+					callback (err);
+					}
+				else {
+					if (userRec === undefined) {
+						const message = "Can't upload the media item because there is no user with email \"" + email + "\".";
+						callback ({message});
+						}
+					else {
+						if (userRec.emailSecret !== code) {
+							const message = "Can't upload the media item because the authorization code is not correct.";
+							callback ({message});
+							}
+						else {
+							if (type === undefined) {
+								const message = "Can't upload the media item because no type was specified.";
+								callback ({message});
+								}
+							else {
+								if ((base64text === undefined) || (base64text.length === 0)) {
+									const message = "Can't upload the media item because no data arrived in the request body.";
+									callback ({message});
+									}
+								else {
+									const theBytes = Buffer.from (base64text, "base64");
+									if (theBytes.length > config.maxMediaUploadBytes) {
+										const message = "Can't upload the media item because it's " + theBytes.length + " bytes, larger than the limit of " + config.maxMediaUploadBytes + " bytes.";
+										callback ({message});
+										}
+									else {
+										const theNewMedia = {
+											screenname: userRec.screenname,
+											type,
+											mediabytes: theBytes,
+											size: theBytes.length
+											};
+										addMedia (theNewMedia, function (err, mediaRec) {
+											if (err) {
+												callback (err);
+												}
+											else {
+												const url = config.urlServerForClient + "media/" + mediaRec.id;
+												callback (undefined, {url, id: mediaRec.id, type: mediaRec.type, size: mediaRec.size});
+												}
+											});
+										}
+									}
+								}
+							}
+						}
+					}
+				});
+			}
+		}
 	function bumpUserHits (screenname, callback) { //7/1/26 by CC
-		const sqltext = "update users set ctHits = ctHits + 1, ctHitsToday = case when date (whenLastHit) = date (now ()) then ctHitsToday + 1 else 1 end, whenLastHit = now () where screenname = " + davesql.encode (screenname) + ";";
+		const now = new Date (); //7/21/26 by CC -- sqlite has no now () function, the timestamp comes from the app
+		const sqltext = "update users set ctHits = ctHits + 1, ctHitsToday = case when date (whenLastHit) = date (" + davesql.encode (now) + ") then ctHitsToday + 1 else 1 end, whenLastHit = " + davesql.encode (now) + " where screenname = " + davesql.encode (screenname) + ";";
 		davesql.runSqltext (sqltext, function (err) {
 			if (err) {
 				if (callback !== undefined) {
@@ -1534,6 +2013,46 @@ var config = {
 				}
 			});
 		}
+	function localNewUser (screenname, email, callback) { //7/29/26 by CC -- #205, sign in on a local install before mail works
+		//thanks to John Johnston, who hit this on his Mac and worked around it by hand -- rss.chat post 381
+		if (screenname === undefined) {
+			const message = "Can't create the user because no screenname was specified.";
+			callback ({message});
+			}
+		else {
+			if (email === undefined) {
+				const message = "Can't create the user " + screenname + " because no email address was specified.";
+				callback ({message});
+				}
+			else {
+				addEmailToUserInDatabase (screenname, email, undefined, true, function (err, emailSecret) {
+					if (err) {
+						callback (err);
+						}
+					else {
+						const url = "/?emailconfirmed=true&email=" + encodeURIComponent (email) + "&code=" + encodeURIComponent (emailSecret) + "&screenname=" + encodeURIComponent (screenname);
+						callback (undefined, url);
+						}
+					});
+				}
+			}
+		}
+	function handleReadHttpFile (url, callback) { //8/1/26 by DW
+		if (url == config.urlMenuOpml) {
+			httpRequest (url, undefined, undefined, function (err, filetext) {
+				if (err) {
+					callback (err);
+					}
+				else {
+					callback (undefined, {filetext});
+					}
+				});
+			}
+		else {
+			const message = "Can't read the file because it is not authorized.";
+			callback ({message});
+			}
+		}
 //like -- 6/24/26 by DW
 	function addToLikesTable (screenname, itemId, callback) {
 		const likesRec = {
@@ -1648,7 +2167,13 @@ var config = {
 			whenUpdated: now,
 			ctSaves: 1
 			};
-		const onDuplicatePart = "on duplicate key update type = values (type), filecontents = values (filecontents), whenUpdated = " + davesql.encode (now) + ", ctSaves = ctSaves + 1";
+		var onDuplicatePart; //7/21/26 by CC -- each engine has its own upsert syntax
+		if (config.database.flUseSqlite) {
+			onDuplicatePart = "on conflict (path) do update set type = excluded.type, filecontents = excluded.filecontents, whenUpdated = " + davesql.encode (now) + ", ctSaves = ctSaves + 1";
+			}
+		else {
+			onDuplicatePart = "on duplicate key update type = values (type), filecontents = values (filecontents), whenUpdated = " + davesql.encode (now) + ", ctSaves = ctSaves + 1";
+			}
 		const sqltext = "insert into files " + getEncodedValues (fileRec) + " " + onDuplicatePart + ";";
 		davesql.runSqltext (sqltext, function (err, result) {
 			if (err) {
@@ -1680,6 +2205,50 @@ var config = {
 					}
 				}
 			});
+		}
+	function addMedia (mediaRec, callback) { //7/22/26 by CC -- #188
+		const theValues = {
+			screenname: mediaRec.screenname,
+			type: mediaRec.type,
+			mediabytes: mediaRec.mediabytes,
+			size: mediaRec.size
+			};
+		const sqltext = "insert into media " + davesql.encodeValues (theValues);
+		davesql.runSqltext (sqltext, function (err, result) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				mediaRec.id = result.insertId;
+				callback (undefined, mediaRec);
+				}
+			});
+		}
+	function getMediaById (id, callback) { //7/22/26 by CC -- #188
+		const idMedia = Number (id);
+		if (isNaN (idMedia)) {
+			const message = "Can't get the media item because the id \"" + id + "\" isn't a number.";
+			const code = 404;
+			callback ({message, code});
+			}
+		else {
+			const sqltext = "select * from media where id = " + davesql.encode (idMedia) + ";";
+			davesql.runSqltext (sqltext, function (err, result) {
+				if (err) {
+					callback (err);
+					}
+				else {
+					if (result.length === 0) {
+						const message = "Can't get the media item because there is no item with id \"" + id + "\".";
+						const code = 404;
+						callback ({message, code});
+						}
+					else {
+						callback (undefined, result [0]);
+						}
+					}
+				});
+			}
 		}
 	function publishFeedFile (relpath, xmltext, callback) { //the one place that decides database vs s3
 		if (config.flFeedsInDatabase) {
@@ -1763,6 +2332,18 @@ var config = {
 							}
 						else {
 							callback (undefined, emailSecret);
+							getUserInfoByScreenname (screenname, function (err, userRec) { //7/25/26 by CC -- the feed exists from the moment the user does
+								if ((err) || (userRec === undefined)) {
+									console.log ("addEmailToUserInDatabase: can't read the user record for " + screenname + ", so the feed wasn't published.");
+									}
+								else {
+									if (userRec.prefs === undefined) { //a brand-new user has never saved prefs
+										userRec.prefs = new Object ();
+										}
+									updateFeedsOnS3 (userRec, function (err) {
+										});
+									}
+								});
 							}
 						});
 					}
@@ -1800,6 +2381,14 @@ function handleHttpRequest (theRequest) {
 			theRequest.httpReturn (200, "text/xml", xmltext);
 			}
 		}
+	function returnJson (err, jsontext) { //7/18/26 by DW
+		if (err) {
+			returnError (err);
+			}
+		else {
+			theRequest.httpReturn (200, "application/json", jsontext);
+			}
+		}
 	function httpReturn (err, data) {
 		if (err) {
 			if (err.code !== undefined) { //2/22/25 by DW -- let the caller determine the code
@@ -1813,12 +2402,12 @@ function handleHttpRequest (theRequest) {
 			returnData (data);
 			}
 		}
-	function returnJson (err, jsontext) { //7/18/26 by DW
+	function httpReturnText (err, theText) { //7/30/26 by DW
 		if (err) {
 			returnError (err);
 			}
 		else {
-			theRequest.httpReturn (200, "application/json", jsontext);
+			returnText (theText);
 			}
 		}
 	function returnRedirect (url, code=undefined) {
@@ -1844,7 +2433,8 @@ function handleHttpRequest (theRequest) {
 					urlServerForClient: config.urlServerForClient,
 					urlWebsocketServerForClient: config.urlWebsocketServerForClient,
 					flWebsocketEnabled: config.flWebsocketEnabled,
-					feedUrlEveryone: config.rssFeedUrl + config.rssFilename
+					feedUrlEveryone: config.rssFeedUrl + config.rssFilename,
+					urlMenuOpml: config.urlMenuOpml //7/30/26 by DW
 					};
 				for (var x in pagetable) {
 					homePageText = homePageText.split ("[%" + x + "%]").join (pagetable [x]);
@@ -1878,7 +2468,8 @@ function handleHttpRequest (theRequest) {
 				}
 			catch (err) { //no repo client copy on this machine -- serve the shipped page the way it's always worked
 				theRequest.addToPagetable = {
-					feedUrlEveryone: config.rssFeedUrl + config.rssFilename
+					feedUrlEveryone: config.rssFeedUrl + config.rssFilename,
+					urlMenuOpml: config.urlMenuOpml, //7/30/26 by DW
 					};
 				return (false); //don't consume, pass it through daveappserver
 				}
@@ -1992,6 +2583,27 @@ function handleHttpRequest (theRequest) {
 				}
 			getItemByGuid (params.screenname, params.guid, httpReturn);
 			return (true);
+		case "/getthread": //7/24/26 by CC -- a post and its whole subtree of replies, one call
+			if (params.guid !== undefined) {
+				getItemByGuid (params.screenname, params.guid, function (err, itemRec) {
+					if (err) {
+						httpReturn (err);
+						}
+					else {
+						if (itemRec === undefined) {
+							const message = "Can't get the thread because there is no post with the guid \"" + params.guid + "\".";
+							httpReturn ({message});
+							}
+						else {
+							getThread (params.screenname, itemRec.id, httpReturn);
+							}
+						}
+					});
+				}
+			else {
+				getThread (params.screenname, params.id, httpReturn);
+				}
+			return (true);
 		case "/checkwhitelist": //6/9/26 by DW
 			checkWhitelist (params.emailaddress, httpReturn);
 			return (true);
@@ -2038,8 +2650,42 @@ function handleHttpRequest (theRequest) {
 		case "/favicon.ico": //7/14/26 by DW
 			returnRedirect (config.urlFavicon);
 			return (true);
+		case "/uploadmedia": //7/22/26 by CC -- #188
+			uploadMedia (params.emailaddress, params.emailcode, params.type, theRequest.postBody, httpReturn);
+			return (true);
+		case "/localnewuser": //7/29/26 by CC -- #205
+			if (requestIsFromThisMachine (theRequest)) {
+				localNewUser (params.screenname, params.email, function (err, url) {
+					if (err) {
+						returnError (err);
+						}
+					else {
+						returnRedirect (url);
+						}
+					});
+				}
+			else {
+				const message = "Can't create the user because localnewuser only works from the machine the server is running on.";
+				returnError ({message});
+				}
+			return (true);
+		
+		case "/readhttpfile": //7/30/26 by DW
+			handleReadHttpFile (params.url, httpReturn); //8/1/26 by DW
+			return (true);
 		
 		default: //7/17/26 by DW
+			if (utils.beginsWith (theRequest.lowerpath, "/media/")) { //7/22/26 by CC -- #188
+				getMediaById (utils.stringLastField (theRequest.lowerpath, "/"), function (err, mediaRec) {
+					if (err) {
+						theRequest.httpReturn (404, "text/plain", err.message);
+						}
+					else {
+						theRequest.httpReturn (200, mediaRec.type, mediaRec.mediabytes);
+						}
+					});
+				return (true);
+				}
 			if (config.flFeedsInDatabase) { //7/15/26 by CC
 				if (utils.beginsWith (theRequest.lowerpath, "/users/") || utils.beginsWith (theRequest.lowerpath, "/data/")) {
 					readDatabaseFile (theRequest.lowerpath, function (err, fileRec) {
@@ -2062,39 +2708,109 @@ function handleHttpRequest (theRequest) {
 
 function startup () {
 	console.log ("startup");
+	var whenLastDayRollover = new Date (); //7/25/26 by CC -- #207
+	function everyNight () { //7/25/26 by CC -- #207, modeled on feedlandserver
+		if (config.flNightlyBackup) {
+			backupDatabase ();
+			}
+		}
 	function everySecond () {
+		const now = new Date ();
+		if (!utils.sameDay (now, whenLastDayRollover)) { //7/25/26 by CC -- #207
+			whenLastDayRollover = now;
+			everyNight ();
+			}
 		}
 	function everyMinute () {
 		}
 	utils.readConfig ("config.json", config, function () {
 		davesql.start (config.database, function () {
-			initDatabaseUrls (); //7/15/26 by DW
-			
-			var options = {
-				urlServerForClient: config.urlServerForClient,
-				flWebsocketEnabled: config.flWebsocketEnabled, 
-				urlWebsocketServerForClient: config.urlWebsocketServerForClient,
+			function continueStartup () { //7/21/26 by CC
+				initDatabaseUrls (); //7/15/26 by DW
 				
-				findUserWithScreenname,
-				findUserWithEmail,
-				getScreenNameFromEmail,
-				addEmailToUserInDatabase,
-				isUserAdmin,
-				
-				httpRequest: handleHttpRequest,
-				};
-			daveappserver.start (options, function (appConfig) { //daveappserver reads our config.json file and returns it
-				for (var x in appConfig) {
-					config [x] = appConfig [x];
-					}
-				updateSubscriptionListOnS3 (); //6/24/26 by DW
-				extrafeeds.start (config.extraFeeds, notifySocketSubscribers); //7/19/26 by CC -- begin polling the interleaved outside feeds
-				utils.runEveryMinute (everyMinute);
-				setInterval (everySecond, 1000); 
-				getMysqlVersion (function (err, mysqlVersion) { //11/18/23 by DW, 2/1/24; 11:22:16 AM by DW
-					config.mysqlVersion = mysqlVersion;
+				var options = {
+					urlServerForClient: config.urlServerForClient,
+					flWebsocketEnabled: config.flWebsocketEnabled, 
+					urlWebsocketServerForClient: config.urlWebsocketServerForClient,
+					
+					findUserWithScreenname,
+					findUserWithEmail,
+					getScreenNameFromEmail,
+					addEmailToUserInDatabase,
+					isUserAdmin,
+					
+					httpRequest: handleHttpRequest,
+					};
+				daveappserver.start (options, function (appConfig) { //daveappserver reads our config.json file and returns it
+					for (var x in appConfig) {
+						config [x] = appConfig [x];
+						}
+					updateSubscriptionListOnS3 (); //6/24/26 by DW
+					extrafeeds.start (config.extraFeeds, notifySocketSubscribers); //7/19/26 by CC -- begin polling the interleaved outside feeds
+					backfillMissingFeeds (); //7/25/26 by CC -- publish feeds for users who don't have one yet
+					utils.runEveryMinute (everyMinute);
+					setInterval (everySecond, 1000); 
+					getMysqlVersion (function (err, mysqlVersion) { //11/18/23 by DW, 2/1/24; 11:22:16 AM by DW
+						config.mysqlVersion = mysqlVersion;
+						});
 					});
-				});
+				}
+			
+			function doCommandLineVerb (theVerb, theParam) { //7/21/26 by CC
+				function done (err, result) {
+					if (err) {
+						console.log (err.message);
+						process.exit (1);
+						}
+					else {
+						var theReport = "";
+						if (result !== undefined) {
+							for (var x in result) {
+								if (theReport.length > 0) {
+									theReport += ", ";
+									}
+								theReport += x + ": " + ((result [x].length !== undefined) ? result [x].length : result [x]);
+								}
+							}
+						console.log (theVerb + " done -- " + theReport);
+						process.exit (0);
+						}
+					}
+				if (theParam === undefined) {
+					console.log ("Can't " + theVerb + " the database because no file was specified.");
+					process.exit (1);
+					}
+				else {
+					switch (theVerb) {
+						case "export":
+							exportDatabase (theParam, done);
+							break;
+						case "import":
+							importDatabase (theParam, done);
+							break;
+						default:
+							console.log ("Can't run the verb " + theVerb + " because it isn't one of export or import.");
+							process.exit (1);
+							break;
+						}
+					}
+				}
+			function afterDatabaseInit () { //7/21/26 by CC -- a verb on the command line does its work and exits, no web server
+				const theVerb = process.argv [2];
+				if (theVerb === undefined) {
+					continueStartup ();
+					}
+				else {
+					doCommandLineVerb (theVerb, process.argv [3]);
+					}
+				}
+			
+			if (config.database.flUseSqlite) { //7/21/26 by CC -- make sure the tables exist before anything queries
+				initNewDatabase (afterDatabaseInit);
+				}
+			else {
+				afterDatabaseInit ();
+				}
 			});
 		});
 	}

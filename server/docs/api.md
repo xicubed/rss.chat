@@ -4,6 +4,8 @@ This is the HTTP interface between the rss.chat client and its server. The clien
 
 The examples below use the flagship server at `https://rss.chat/`. If you run your own server, substitute its address.
 
+**Calling from browser-based JavaScript?** There's already a simpler way: [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js), the wrapper the shipped client uses. Every endpoint here is a one-line method on it, with the authentication and response handling done for you -- [here's the doc](../../client/docs/apijs.md), with a complete working page. (Browser only -- from Node, call the HTTP interface below directly.)
+
 ### How calls and responses work
 
 Every call is a plain HTTP request with query-string parameters. Reads are GET, writes are POST, but the server does not distinguish -- the parameters carry everything.
@@ -18,15 +20,24 @@ A few endpoints return a string (a feed, an OPML document) rather than an object
 
 ### How authentication works
 
-There are no passwords. A user proves who they are by proving they can read their email.
+There are no passwords. A user proves who they are by proving they can read their email, and from then on two values identify them: `emailaddress` and `emailcode`. Every call marked **authenticated** below takes those two extra parameters.
 
-1. The client calls `/sendconfirmingemail?email=...&urlredirect=...`. The server mails a confirmation link to that address.
+If you're signed in to rss.chat in your browser, you already have your pair:
+
+1. Go to [rss.chat](https://rss.chat/), signed in.
+2. Open the browser's JavaScript console.
+3. Type `localStorage.rssNetworkMemory` and press Return.
+4. There they are -- `email` and `code`. Those go in every authenticated call as `emailaddress` and `emailcode`.
+
+If your app signs users in itself, the credential comes from the confirmation dance:
+
+1. Call `/sendconfirmingemail?email=...&urlredirect=...`. The server mails a confirmation link to that address.
 2. The user clicks the link. The server redirects the browser to `urlredirect` with `emailconfirmed=true`, `email`, `code`, and `screenname` added to the query string.
-3. The client saves `email` and `code` -- that pair is the credential. The shipped client keeps it in localStorage.
+3. Save `email` and `code` -- that pair is the credential. The shipped client keeps it in localStorage, which is why the recipe above works.
 
 New accounts work the same way through `/createnewuser?email=...&name=...&urlredirect=...`, where `name` is the desired screenname. If the server has a whitelist, the email address must be on it; `/checkwhitelist?emailaddress=...` answers `{"flWhitelisted": true}` or `false` (a server with no whitelist answers true for everyone).
 
-Every call marked **authenticated** below takes two extra parameters: `emailaddress` and `emailcode`. The server looks the user up by email and compares the code; a mismatch gets the usual can't-because error.
+A wrong code gets the usual can't-because error.
 
 ### Reading posts
 
@@ -43,6 +54,8 @@ Try it: [https://rss.chat/getrecentuseritems?name=dave](https://rss.chat/getrece
 **`/getitembyguid?guid=X`** -- one post, looked up by its guid, which is its permalink -- e.g. `https://rss.chat/?id=204`. A deleted post answers with an error saying so, rather than pretending it never existed.
 
 **`/getitemandreplies?idparent=N`** -- a post and its direct replies, oldest first, as one flat array. The parent is the item whose `id` equals `idparent`; the replies are the items whose `inReplyToNum` points at it. This is the call the client makes to show a thread.
+
+**`/getthread?guid=X`** -- a post and its whole subtree of replies, in one call. You can pass `id=N` instead of `guid`. The response is the post's item record with one added member: `replies`, an array of item records in the same shape, each carrying its own `replies` -- the nesting is the threading. A post with no replies omits the member, like every other empty field. You get the post you ask about and everything under it, not the conversation above it -- ask about the root and you get the whole thread. Deleted posts are filtered out, and the reply counts (`ctReplies`) on each item match what's in its `replies` array. This does in one call what walking the `source:comments` feeds does in many -- same tree, either door. (New in server v0.6.4.)
 
 **`/getiteminfo?guid=X&format=rss`** -- the interop version of a single-post read, for apps that speak feed vocabulary rather than this API's. You can pass `id=N` instead of `guid`. Two formats: `rss` (the default) returns the item as it appears in the author's RSS feed, rendered as JSON -- including `source:comments` and `<source>` attribution; `feedland` returns the same item record the other read calls return. Any other format name gets an error naming the two real ones.
 
@@ -76,25 +89,94 @@ A server configured with `extraFeeds` (see [config.md](config.md)) carries outsi
 
 All writing calls are **authenticated** POSTs.
 
-**`/newpost?jsontext=X`** -- publish a post. `jsontext` is a JSON-encoded object with these fields, all optional except the body, which is either `description` or `asciidoctext`:
+**`/newpost?jsontext=X`** -- publish a post. `jsontext` is a JSON object carrying the post's body:
 
-- `description` -- the post body, as HTML.
-- `markdowntext` -- the body as markdown, if the client has it.
+```json
+{"markdowntext": "Hello from my **first** post through the API."}
+```
+
+A complete call, using your `emailaddress` and `emailcode`:
+
+```
+curl -X POST -G "https://rss.chat/newpost" \
+	--data-urlencode "emailaddress=you@example.com" \
+	--data-urlencode "emailcode=YOURCODE" \
+	--data-urlencode 'jsontext={"markdowntext": "Hello from my **first** post through the API."}'
+```
+
+The response is your finished post. The `guid` is its permanent address, and it's already live in your feed:
+
+```json
+{
+	"description": "<p>Hello from my <strong>first</strong> post through the API.</p>",
+	"markdowntext": "Hello from my **first** post through the API.",
+	"feedUrl": "https://rss.chat/users/you/rss.xml",
+	"pubDate": "2026-07-27T16:07:55.225Z",
+	"author": "you",
+	"id": 413,
+	"guid": "https://rss.chat/?id=413"
+}
+```
+
+The other fields, all optional:
+
+- `description` -- the body as HTML, if HTML is what you have.
 - `asciidoctext` -- the post body as AsciiDoc. When present, the server renders it to HTML -- structure via Asciidoctor, code blocks syntax-highlighted with inline styles so the colors travel wherever the post travels, then sanitized -- and stores the result as `description`; a `description` sent alongside it is ignored. The source is kept on the item so the post can be re-edited as AsciiDoc. Both AsciiDoc's native `[source,lang]` blocks and markdown-style backtick fences highlight.
-- `title` -- posts can have titles; most don't.
-- `inReplyTo` -- the `id` of the post this one replies to.
+- `title` -- a title for the post.
+- `inReplyTo` -- the `id` of the post you're replying to: `{"markdowntext": "Same here.", "inReplyTo": 204}`. When you read a reply this field comes back named `inReplyToNum`, and the server accepts that name here too -- send whichever you have.
 
-The server stamps the author, the publication date, and the feed it belongs to -- those are facts about the authenticated caller, not things the caller gets to claim. The response is the completed item record, including the new `id` and `guid`. Publishing also rebuilds and republishes the author's feeds on static storage, and if the post is a reply, the parent post's comments feed and the parent author's feeds too -- the interop machinery rides along on every write.
+Errors come back as a plain sentence, with a 503 status:
 
-**`/updatepost?jsontext=X`** -- edit a post. Same `jsontext` shape plus a required `id`. Only the author can update a post; the response is the updated item record, and feeds republish as above. One fidelity rule: an update that carries `description` but no `asciidoctext` clears any stored AsciiDoc source -- the edit replaced the rendered body, so the old source no longer describes the post and keeping it would let a later AsciiDoc edit resurrect stale content. To edit an AsciiDoc post *as* AsciiDoc, send `asciidoctext` and the server re-renders it.
+```
+Can't add the post because the authorization code is not correct.
+```
 
-**`/deletepost?id=N`** -- delete a post. The delete is soft -- the row stays so reply threads hold together, but the post disappears from every feed and every read call answers that it's been deleted. Only the author can delete a post.
+*Note: We store both the HTML and markdown versions of every post because we want to offer flexibility to client apps and editors.*
 
-**`/togglelike?id=N`** -- like a post, or take the like back if it's already there. One call, both directions. The response is the freshly-read item record, so the caller sees the new `ctLikes` and `flLiked` without a second call.
+**`/updatepost?jsontext=X`** -- edit a post. Same shape as `/newpost`, plus `id`, the number of the post you're editing:
+
+```json
+{"id": 413, "markdowntext": "Hello from my **first** post through the API, freshly edited."}
+```
+
+Only the author can edit a post. The response echoes the post as now stored, and your feed republishes as it does for a new post:
+
+```json
+{
+	"id": 413,
+	"markdowntext": "Hello from my **first** post through the API, freshly edited.",
+	"description": "<p>Hello from my <strong>first</strong> post through the API, freshly edited.</p>"
+}
+```
+
+One fidelity rule for AsciiDoc posts: an update that carries `description` but no `asciidoctext` clears any stored AsciiDoc source -- the edit replaced the rendered body, so the old source no longer describes the post and keeping it would let a later AsciiDoc edit resurrect stale content. To edit an AsciiDoc post *as* AsciiDoc, send `asciidoctext` and the server re-renders it.
+
+**`/deletepost?id=N`** -- delete a post. It disappears from feeds and timelines, and reading it answers that it's been deleted. Replies to it survive. Only the author can delete a post.
+
+**`/togglelike?id=N`** -- like a post, or take the like back if it's already there. One call, both directions. The response is the post with its new `ctLikes` and `flLiked`.
 
 **`/renderasciidoc?asciidoctext=X`** -- render AsciiDoc without publishing anything: the same pipeline `/newpost` runs, so the returned `{"html": ...}` is exactly what publishing that source would produce. This is what a composer uses for live preview. Authenticated so the render engine isn't an open resource; nothing is stored.
 
-**`/saveprefs?jsontext=X`** -- store the caller's preferences object on their user record. The prefs are the client's business -- the server stores what it's given and returns it in `/getuserdata`. The shipped client keeps its display name, feed metadata, and avatar URL here.
+**`/saveprefs?jsontext=X`** -- store your preferences object on your user record. The server keeps what you give it and returns it in `/getuserdata`. The shipped client keeps its display name, feed metadata, and avatar URL here.
+
+**`/uploadmedia?type=T`** -- upload an image, or any media item. This is the one write whose payload rides in the request body: base64-encode the file's bytes and send them as the body of the POST, with the content type in the `type` parameter:
+
+```
+base64 -i photo.png | curl -X POST "https://rss.chat/uploadmedia?type=image/png&emailaddress=you@example.com&emailcode=YOURCODE" --data-binary @-
+```
+
+The decoded size must be within the server's limit -- 2MB by default. The response gives you `url`, the permanent address your picture will be served from -- it's what goes in a post's `img` tag:
+
+```json
+{
+	"url": "https://rss.chat/media/57",
+	"id": 57,
+	"type": "image/png",
+	"size": 48211
+}
+```
+
+**`/media/N`** -- fetch a stored media item. The exception in this section: it's a plain unauthenticated GET, because it's the address readers' browsers hit when a post carries a picture. The bytes come back exactly as uploaded, with the content type given at upload; an id that doesn't exist answers 404. Media survives export and import along with everything else, so these addresses are as permanent as post permalinks.
 
 ### The item record
 
@@ -119,5 +201,7 @@ Every call that returns posts returns them in this shape. Fields that would be e
 The server broadcasts over a websocket as posts arrive and change: `newItem` when a post is published and `updatedItem` when one is edited or its like count moves, each carrying the item record. The shipped client uses this to keep every open timeline current without polling, and any app can listen the same way -- the stream is documented in [the firehose doc](firehose.md), with working demo apps in [examples/firehose](../../examples/firehose/). See the [basics doc](../../client/docs/basics.md) for the interop story feeds tell.
 
 ***
+
+*How these docs are written: [howWeDocApis.md](howWeDocApis.md).*
 
 *Written by Claude Code.*

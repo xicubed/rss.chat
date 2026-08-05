@@ -1,7 +1,7 @@
 function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic theme (3-col), renamed from twitter 7/2/26
 			console.log ("chatUserInterface (classic)");
 
-			const themesVersion = "0.5.330"; //bump on every theme edit -- clicking a name shows the person's timeline, like the avatar, 7/16/26 by CC
+			const themesVersion = "0.5.339"; //bump on every theme edit -- the first Return after pasting text containing a link now breaks the paragraph at the cursor, not at the link, 7/23/26 by CC
 
 			var options = {
 				whereToAppend: undefined,
@@ -82,6 +82,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			var flDraftChanged = false;
 			var draftSaveTimeout, theSpinner; //assigned by draft/publish flow
 			var currentEditorMode = appPrefs.defaultEditorMode || "wizzy";
+			var ctPendingImageUploads = 0, idNextImageUpload = 1; //7/22/26 by CC -- #188: publishing waits while images upload
 
 			const divReplyOverlay = $('<div class="divReplyOverlay"></div>');
 			const divReplyModal = $('<div class="divReplyModal"></div>');
@@ -92,6 +93,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			const divReplyParentAuthor = $('<div class="divReplyParentAuthor"></div>');
 			const divReplyParentTitle = $('<div class="divReplyParentTitle"></div>');
 			const divReplyParentText = $('<div class="divReplyParentText"></div>');
+			const divReplyParentSummary = $('<div class="divReplyParentSummary"><span class="spanReplyWedge">▸</span><span class="spanReplyWordCount"></span></div>'); //7/20/26 by CC -- #155: the collapsed stand-in for the post being replied to; the wedge is a text character, not an icon-font glyph //black right-pointing small triangle
 			const divReplyParentDivider = $('<div class="divReplyDividerLine"></div>');
 			const divReplyComposerRow = $('<div class="divReplyComposerRow"></div>');
 			const divModalToolbar = $('<div class="divModalToolbar"></div>');
@@ -112,30 +114,35 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			const textareaMarkdown = $('<textarea class="textareaMarkdown"></textarea>'); //7/5/26 by CC -- #107: markdown mode edits in a real text box, wordland-style -- angle brackets and markdown syntax are just characters here
 			var mdSourceText = ""; //7/5/26 by CC -- #107: the markdown text is the one permanent document (the wordland model); the wizzy view is a rendering of it; the input handlers keep it current, so flipping modes never converts a conversion
 			document.execCommand ("defaultParagraphSeparator", false, "p"); //5/26/26 by Claude -- Enter produces <p> not <div>, so paragraphs survive feedland's HTML strip
-			var flReplyParentCanExpand = false; //6/1/26 by Claude -- click-to-expand the truncated reply-to display, matching the timeline
-			divReplyParentText.on ("click", function () {
-				if (flReplyParentCanExpand === false) {
-					return;
-					}
-				divReplyParentText.toggleClass ("flExpanded");
-				});
-			divReplyParentText.on ("mousedown", function (event) {
-				if (event.detail > 1) { //suppress word-select on rapid double-click
-					event.preventDefault ();
-					}
-				});
-			function setupReplyParentExpand () {
-				divReplyParentText.removeClass ("flExpanded");
-				const scrollHeight = divReplyParentText.prop ("scrollHeight");
-				const clientHeight = divReplyParentText.prop ("clientHeight");
-				if (scrollHeight > clientHeight) {
-					flReplyParentCanExpand = true;
-					divReplyParentText.addClass ("bodyTruncated");
+			var flReplyParentShowing = false; //7/20/26 by CC -- #155: the wedge shows and hides the post being replied to; it starts hidden every time
+			var flReplyParentHasTitle = false; //assigned by openReplyModal
+			function setReplyParentVisible (flShow) {
+				flReplyParentShowing = flShow;
+				if (flShow) {
+					if (flReplyParentHasTitle) {
+						divReplyParentTitle.show ();
+						}
+					divReplyParentText.show ();
+					divReplyParentSummary.addClass ("flExpanded");
 					}
 				else {
-					flReplyParentCanExpand = false;
-					divReplyParentText.removeClass ("bodyTruncated");
+					divReplyParentTitle.hide ();
+					divReplyParentText.hide ();
+					divReplyParentSummary.removeClass ("flExpanded");
 					}
+				}
+			divReplyParentSummary.on ("click", function () {
+				setReplyParentVisible (!flReplyParentShowing);
+				});
+			function getWordCountText (htmltext) { //7/20/26 by CC -- #155
+				const plaintext = $("<div></div>").html (htmltext).text ();
+				var ctWords = 0;
+				plaintext.split (/\s+/).forEach (function (word) {
+					if (word.length > 0) {
+						ctWords++;
+						}
+					});
+				return (ctWords + ((ctWords === 1) ? " word." : " words."));
 				}
 
 			function selectThread (divThread, flScrollIntoView) {
@@ -618,11 +625,13 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				wireAvatarClick (divReplyParentAvatar, item.screenname);
 				divReplyParentAuthor.text (author);
 				const theParentTitle = item.title;
-				if (theParentTitle === undefined || theParentTitle.length === 0) {
-					divReplyParentTitle.text ("").hide ();
+				if (theParentTitle === undefined || theParentTitle.length === 0) { //7/20/26 by CC -- #155: setReplyParentVisible owns show/hide now; here we only remember whether there's a title to show
+					flReplyParentHasTitle = false;
+					divReplyParentTitle.text ("");
 					}
 				else {
-					divReplyParentTitle.text (theParentTitle).show ();
+					flReplyParentHasTitle = true;
+					divReplyParentTitle.text (theParentTitle);
 					}
 				divReplyParentText.html (item.description);
 				const myScreenname = globals.myRssNetwork.getScreenname () || "?";
@@ -641,12 +650,15 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				buttonReplyPost.text ("Reply");
 				buttonReplyPost.prop ("disabled", true);
 				divReplyModal.removeClass ("flNoParent");
-				divReplyParent.show ();
+				divReplyParentText.addClass ("flExpanded"); //7/20/26 by CC -- #155: when the wedge opens the post, all of it shows
+				divReplyParentSummary.find (".spanReplyWordCount").text (getWordCountText (item.description));
+				divReplyParentSummary.show ();
+				divReplyParent.show (); //avatar and author name stay visible
+				setReplyParentVisible (false); //title and text start folded every time
 				divReplyParentDivider.show ();
 				replyTargetItem = item;
 				lockBodyScroll ();
 				divReplyOverlay.fadeIn (300);
-				setupReplyParentExpand ();
 				focusEditor ();
 				}
 			function openEditWindow (savedDraft) {
@@ -1940,6 +1952,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			divReplyModalTop.append (divComposerTitle);
 			divReplyModalTop.append (divModalToolbar);
 			divReplyParentBody.append (divReplyParentAuthor);
+			divReplyParentBody.append (divReplyParentSummary); //7/20/26 by CC -- #155: the wedge line sits directly under the author's name
 			divReplyParentBody.append (divReplyParentTitle);
 			divReplyParentBody.append (divReplyParentText);
 			divReplyParent.append (divReplyParentAvatar);
@@ -2195,7 +2208,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					flBodyChanged = (inputReplyComposer.html () !== editOriginalBody);
 					}
 				const flTitleChanged = currentTitle !== editOriginalTitle;
-				const flDisabled = flBodyEmpty || (!flBodyChanged && !flTitleChanged);
+				const flDisabled = flBodyEmpty || (!flBodyChanged && !flTitleChanged) || (ctPendingImageUploads > 0); //7/22/26 by CC -- #188: no publishing while an image is still uploading
 				buttonReplyPost.prop ("disabled", flDisabled);
 				}
 			function setTitleDialog () {
@@ -2365,13 +2378,37 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 
 				const editor = inputReplyComposer [0];
+
+				//7/23/26 by CC -- pasted inline fragments (text with a link, no paragraph wrapper) sit as bare children of the editor; wrapping each text node in its own paragraph stranded inline elements between blocks and evicted the caret, so the first Return after such a paste broke the text at the link instead of the cursor. Wrap each contiguous inline run in ONE paragraph, then put the caret back before the browser splits.
+				const theSelection = window.getSelection ();
+				var savedCaretNode, savedCaretOffset;
+				if ((theSelection !== null) && (theSelection.rangeCount > 0)) {
+					savedCaretNode = theSelection.anchorNode;
+					savedCaretOffset = theSelection.anchorOffset;
+					}
+				const inlineTags = {A: true, B: true, STRONG: true, I: true, EM: true, U: true, CODE: true, IMG: true, SPAN: true, BR: true};
+				var currentWrapper = null, flWrappedSomething = false;
 				Array.from (editor.childNodes).forEach (function (node) {
-					if (node.nodeType === 3 && node.textContent.length > 0) {
-						const wrapper = document.createElement ("p");
-						node.parentNode.insertBefore (wrapper, node);
-						wrapper.appendChild (node);
+					const flInline = (node.nodeType === 3) || ((node.nodeType === 1) && (inlineTags [node.tagName] === true));
+					if (flInline) {
+						if (currentWrapper === null) {
+							currentWrapper = document.createElement ("p");
+							editor.insertBefore (currentWrapper, node);
+							}
+						currentWrapper.appendChild (node);
+						flWrappedSomething = true;
+						}
+					else {
+						currentWrapper = null;
 						}
 					});
+				if (flWrappedSomething && (savedCaretNode !== undefined) && (savedCaretNode !== editor)) {
+					const newRange = document.createRange ();
+					newRange.setStart (savedCaretNode, savedCaretOffset);
+					newRange.collapse (true);
+					theSelection.removeAllRanges ();
+					theSelection.addRange (newRange);
+					}
 				});
 			function escapePastedText (theText) {
 				return theText.replace (/&/g, "&amp;").replace (/</g, "&lt;").replace (/>/g, "&gt;");
@@ -2430,6 +2467,39 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				cleanNode (doc.body);
 				return doc.body.innerHTML;
 				}
+			function uploadPastedImage (theFile) { //7/22/26 by CC -- #188: a pasted image uploads to the server, the picture appears at the cursor
+				const maxImageBytes = 2 * 1024 * 1024; //matches the server's default maxMediaUploadBytes
+				if (globals.myRssNetwork.uploadMedia === undefined) {
+					alertDialog ("Can't add the image because the software isn't up to date.");
+					return;
+					}
+				if (theFile.size > maxImageBytes) {
+					alertDialog ("Can't add the image because it's larger than the 2MB limit.");
+					return;
+					}
+				const idPlaceholder = "idImageUpload" + idNextImageUpload++;
+				document.execCommand ("insertHTML", false, '<span class="spanImageUploading" id="' + idPlaceholder + '">Uploading image&#x2026;</span>'); //horizontal ellipsis
+				ctPendingImageUploads++;
+				editorContentChanged ();
+				const theReader = new FileReader ();
+				theReader.onload = function () {
+					const base64text = theReader.result.substring (theReader.result.indexOf (",") + 1);
+					globals.myRssNetwork.uploadMedia (theFile.type, base64text, function (err, data) {
+						ctPendingImageUploads--;
+						const spanPlaceholder = $("#" + idPlaceholder);
+						if (err) {
+							spanPlaceholder.remove ();
+							alertDialog (err.message);
+							}
+						else {
+							spanPlaceholder.replaceWith ('<img src="' + data.url + '">');
+							}
+						editorContentChanged ();
+						scheduleDraftSave ();
+						});
+					};
+				theReader.readAsDataURL (theFile);
+				}
 			inputReplyComposer.on ("paste", function (event) {
 				event.preventDefault ();
 				const clipboardData = event.originalEvent.clipboardData || window.clipboardData;
@@ -2437,6 +2507,20 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					return;
 					}
 				const flMarkdownMode = inputReplyComposer.hasClass ("flMarkdownMode");
+
+				const theClipboardItems = clipboardData.items; //7/22/26 by CC -- #188: a pasted image (screenshot or copied image file) uploads and lands at the cursor
+				if ((theClipboardItems !== undefined) && (!flMarkdownMode)) {
+					var flFoundImage = false;
+					for (var i = 0; i < theClipboardItems.length; i++) {
+						if ((theClipboardItems [i].kind === "file") && (theClipboardItems [i].type.indexOf ("image/") === 0)) {
+							uploadPastedImage (theClipboardItems [i].getAsFile ());
+							flFoundImage = true;
+							}
+						}
+					if (flFoundImage) {
+						return;
+						}
+					}
 
 				const clipboardPlainText = clipboardData.getData ("text/plain");
 				const trimmedClipboard = clipboardPlainText.trim ();
@@ -2519,7 +2603,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					refreshUpdateDisabled ();
 					}
 				else {
-					buttonReplyPost.prop ("disabled", flEmpty);
+					buttonReplyPost.prop ("disabled", flEmpty || (ctPendingImageUploads > 0)); //7/22/26 by CC -- #188: no publishing while an image is still uploading
 					}
 				scheduleDraftSave ();
 				updateModalCharCount ();

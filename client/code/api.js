@@ -223,7 +223,6 @@ function rssNetworkServer (userOptions) {
 	function isEmailInDatabase (email, callback) { //6/15/26 by DW
 		servercall ("isemailindatabase", {email}, true, "GET", callback);
 		}
-	
 	function toggleLike (id, callback) { //6/24/26 by DW
 		if (userIsSignedIn ()) {
 			servercall ("togglelike", {id}, true, "POST", callback);
@@ -245,6 +244,55 @@ function rssNetworkServer (userOptions) {
 		}
 	function getMostActiveToday (callback) { //7/1/26 by DW
 		servercall ("getmostactivetoday", undefined, false, "GET", callback);
+		}
+	function uploadMedia (type, base64text, callback) { //7/22/26 by CC -- #188
+		if (userIsSignedIn ()) {
+			const params = {
+				type,
+				emailaddress: rssNetworkMemory.email,
+				emailcode: rssNetworkMemory.code
+				};
+			const url = options.serverAddress + "uploadmedia?" + buildQueryString (params);
+			fetch (url, {method: "POST", body: base64text}) .then (function (response) {
+				return (response.text () .then (function (responseText) {
+					if (response.ok) {
+						try {
+							const jstruct = JSON.parse (responseText);
+							callback (undefined, jstruct);
+							}
+						catch (err) {
+							callback (err);
+							}
+						}
+					else {
+						try {
+							const jstruct = JSON.parse (responseText);
+							callback (jstruct);
+							}
+						catch (err) {
+							callback ({message: responseText});
+							}
+						}
+					}));
+				})
+			.catch (function (err) {
+				callback (err);
+				});
+			}
+		else {
+			const message = "Can't upload the image because you are not signed in.";
+			callback ({message});
+			}
+		}
+	function readHttpFile (url, callback) { //7/30/26 by DW
+		servercall ("readhttpfile", {url}, false, "GET", function (err, jstruct) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				callback (undefined, jstruct.filetext);
+				}
+			});
 		}
 	
 	function start (callback) { //async stuff we do at start -- 4/22/26 by DW
@@ -299,6 +347,9 @@ function rssNetworkServer (userOptions) {
 	
 	this.getMostActiveToday = getMostActiveToday; //7/1/26 by DW
 	this.getSocketGreeting = getSocketGreeting; //7/17/26 by CC
+		this.uploadMedia = uploadMedia; //7/22/26 by CC -- #188
+	
+	this.readHttpFile = readHttpFile; //7/30/26 by DW
 	
 	this.signOut = signOut;
 	this.start = start; //4/22/26 by DW
