@@ -179,6 +179,16 @@ Optional. Outside feeds to interleave into the timeline -- another rss.chat inst
 
 Each entry is a display name and a feed address, plus an optional `imageUrl` used as the avatar for that feed's items (feeds that carry per-item thumbnails, like Wired's, supply their own). Feeds that belong together can share a `group` ("Wired") and carry a `shortName` ("Backchannel") -- the checkbox list renders them indented under one heading, which keeps long names from crowding the rail. A `groupUrl` on the group's feeds makes the heading a link to that publication's website. The order matters twice: it's the order of the checkboxes, and when the same story arrives through two feeds, the first configured feed gets the attribution.
 
+### urlExtraFeedsOpml
+
+Optional. The address of an OPML file whose feeds extend `extraFeeds` -- and since the outline is re-read on every poll cycle (every five minutes), editing the file is all it takes to change the feed mix. No restart, no config edit. The two sources combine: `extraFeeds` entries come first, then the outline's, and a feed that appears in both counts once.
+
+`"urlExtraFeedsOpml": "https://myserver.chat/extrafeeds.opml"`
+
+The outline follows the shape a subscription list already has: a top-level node with an `xmlUrl` is a feed, and a node with children is a group -- its `text` becomes the group heading, its `htmlUrl` the heading's link, and each child's `text` the label on the checkbox. A `name` attribute on a feed node overrides the label items carry as their source (the checkbox keeps `text`); an `imageUrl` attribute works as in `extraFeeds`. Comment nodes are skipped.
+
+The file can live anywhere on the web, including on this server: put it at `data/extrafeeds.opml` and the server serves it at `/extrafeeds.opml`, read fresh on each request.
+
 ### localSourceLabel
 
 Optional, used with `extraFeeds`. The name shown as the source of this server's own posts -- next to the feed icon on each post, and on the local-posts checkbox. Defaults to `myDomain`.

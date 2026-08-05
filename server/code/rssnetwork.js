@@ -73,6 +73,7 @@ var config = {
 	flNightlyBackup: false, //7/25/26 by CC -- #207
 	backupFolder: "data/backups/", //7/25/26 by CC -- #207
 	urlMenuOpml: "", //7/30/26 by DW
+	urlExtraFeedsOpml: "", //8/4/26 by CC -- optional: an outline on the web whose feeds extend extraFeeds, re-read every poll cycle
 	};
 
 //misc stuff
@@ -2488,6 +2489,14 @@ function handleHttpRequest (theRequest) {
 					}
 				});
 			return (true);
+		case "/extrafeeds.opml": //8/4/26 by CC -- a server can host its own feed-mix outline; read fresh each request, so editing the file is all it takes to change the mix
+			try {
+				theRequest.httpReturn (200, "text/xml", fs.readFileSync (config.dataPath + "extrafeeds.opml", "utf8"));
+				}
+			catch (err) {
+				returnError ({message: "Can't read the extra-feeds outline because this server doesn't have one."});
+				}
+			return (true);
 		case "/data/coverage.opml": //7/19/26 by CC -- the repeater's coverage map
 			buildCoverageOpml (function (err, opmltext) {
 				if (err) {
@@ -2746,7 +2755,7 @@ function startup () {
 						config [x] = appConfig [x];
 						}
 					updateSubscriptionListOnS3 (); //6/24/26 by DW
-					extrafeeds.start (config.extraFeeds, notifySocketSubscribers); //7/19/26 by CC -- begin polling the interleaved outside feeds
+					extrafeeds.start (config.extraFeeds, notifySocketSubscribers, config.urlExtraFeedsOpml); //7/19/26 by CC -- begin polling the interleaved outside feeds; urlExtraFeedsOpml added 8/4/26
 					backfillMissingFeeds (); //7/25/26 by CC -- publish feeds for users who don't have one yet
 					utils.runEveryMinute (everyMinute);
 					setInterval (everySecond, 1000); 

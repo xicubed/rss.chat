@@ -14,6 +14,7 @@
 //cache is in memory and rebuilds on restart from the next poll.
 
 const Parser = require ("rss-parser");
+const opml = require ("opml"); //8/4/26 by CC -- the feed list can live in an outline on the web
 const asciidoc = require ("./asciidoc.js");
 
 const maxItemsPerFeed = 50; //7/19/26 by CC -- was 25; deeper cache feeds the timeline's infinite scroll
@@ -21,6 +22,8 @@ const pollEveryMinutes = 5;
 
 var theFeeds = []; //one entry per configured feed: {config, items, seenGuids, flFirstPoll}
 var notifyCallback = undefined;
+var staticConfigs = []; //8/4/26 by CC -- the extraFeeds array from config.json; always first in the list
+var urlFeedListOpml = undefined; //8/4/26 by CC -- when set, an outline on the web extends the list, re-read every poll cycle
 
 const parser = new Parser ({
 	timeout: 15000,
@@ -160,19 +163,86 @@ function pollFeed (theFeed) {
 		console.log ("extrafeeds: error polling \"" + theFeed.config.name + "\" -- " + err.message);
 		});
 	}
+function notComment (node) { //8/4/26 by CC
+	return (!(node.isComment === "true" || node.isComment === true));
+	}
+function feedConfigsFromOpml (theOutline) { //8/4/26 by CC -- outline conventions: a top-level node with an xmlUrl is a feed; a container's children are a group named for it
+	var theList = [];
+	(theOutline.opml.body.subs || []).forEach (function (node) {
+		if (!notComment (node)) {
+			return;
+			}
+		if (node.xmlUrl !== undefined) {
+			theList.push ({name: (node.name !== undefined) ? node.name : node.text, xmlUrl: node.xmlUrl, imageUrl: node.imageUrl});
+			}
+		else {
+			(node.subs || []).forEach (function (sub) {
+				if (notComment (sub) && (sub.xmlUrl !== undefined)) { //a name attribute overrides the label items carry as their source; text stays the checkbox label
+					theList.push ({name: (sub.name !== undefined) ? sub.name : sub.text, shortName: sub.text, group: node.text, groupUrl: node.htmlUrl, xmlUrl: sub.xmlUrl, imageUrl: sub.imageUrl});
+					}
+				});
+			}
+		});
+	return (theList);
+	}
+function setFeedList (feedConfigs) { //8/4/26 by CC -- reconcile: feeds that stay keep their poll state, arrivals start fresh, departures drop
+	var byUrl = new Map ();
+	theFeeds.forEach (function (theFeed) {
+		byUrl.set (theFeed.config.xmlUrl, theFeed);
+		});
+	const seenUrls = new Set (); //the same feed can appear in config.json and the outline -- first one wins
+	theFeeds = [];
+	feedConfigs.forEach (function (feedConfig) {
+		if ((feedConfig.xmlUrl === undefined) || seenUrls.has (feedConfig.xmlUrl)) {
+			return;
+			}
+		seenUrls.add (feedConfig.xmlUrl);
+		const existing = byUrl.get (feedConfig.xmlUrl);
+		if (existing !== undefined) {
+			existing.config = feedConfig; //its name or group may have changed in the outline
+			theFeeds.push (existing);
+			}
+		else {
+			theFeeds.push ({config: feedConfig, items: [], seenGuids: new Set (), flFirstPoll: true});
+			}
+		});
+	}
+function readFeedListOpml (callback) { //8/4/26 by CC -- extend the static list with the outline's feeds; on error the list stands as it was
+	opml.readOutline (urlFeedListOpml, function (err, theOutline) {
+		if (err) {
+			console.log ("extrafeeds: can't read the feed-list outline because " + err.message);
+			}
+		else {
+			try {
+				setFeedList (staticConfigs.concat (feedConfigsFromOpml (theOutline)));
+				}
+			catch (err) {
+				console.log ("extrafeeds: can't use the feed-list outline because " + err.message);
+				}
+			}
+		callback ();
+		});
+	}
 function pollAll () {
-	theFeeds.forEach (pollFeed);
+	if (urlFeedListOpml !== undefined) { //8/4/26 by CC -- the mix can change between polls; an outline edit is all it takes
+		readFeedListOpml (function () {
+			theFeeds.forEach (pollFeed);
+			});
+		}
+	else {
+		theFeeds.forEach (pollFeed);
+		}
 	}
 
-function start (extraFeedsConfig, theNotifyCallback) {
-	if ((extraFeedsConfig === undefined) || (extraFeedsConfig.length === 0)) {
+function start (extraFeedsConfig, theNotifyCallback, urlOpml) { //urlOpml added 8/4/26 by CC -- an outline on the web that extends the feed list
+	staticConfigs = (extraFeedsConfig !== undefined) ? extraFeedsConfig : [];
+	urlFeedListOpml = ((urlOpml !== undefined) && (urlOpml.length > 0)) ? urlOpml : undefined;
+	if ((staticConfigs.length === 0) && (urlFeedListOpml === undefined)) {
 		return; //no extra feeds configured -- the feature stays dormant
 		}
 	notifyCallback = theNotifyCallback;
-	theFeeds = extraFeedsConfig.map (function (feedConfig) {
-		return ({config: feedConfig, items: [], seenGuids: new Set (), flFirstPoll: true});
-		});
-	console.log ("extrafeeds: polling " + theFeeds.length + " feeds every " + pollEveryMinutes + " minutes.");
+	setFeedList (staticConfigs);
+	console.log ("extrafeeds: polling " + theFeeds.length + " feeds every " + pollEveryMinutes + " minutes" + ((urlFeedListOpml !== undefined) ? ", list extended by " + urlFeedListOpml : "") + ".");
 	pollAll ();
 	setInterval (pollAll, pollEveryMinutes * 60 * 1000);
 	}

@@ -85,6 +85,8 @@ A server configured with `extraFeeds` (see [config.md](config.md)) carries outsi
 
 **`/data/coverage.opml`** -- the coverage map: an OPML subscription list of every feed this server carries, starting with its own. What you'd read before deciding to link to this repeater.
 
+**`/extrafeeds.opml`** -- the outline the feed mix is edited in, when the server hosts its own (the `urlExtraFeedsOpml` setting, see [config.md](config.md)). Served fresh from `data/extrafeeds.opml` on every request; answers with an error sentence on servers that don't have one.
+
 ### Writing
 
 All writing calls are **authenticated** POSTs.
