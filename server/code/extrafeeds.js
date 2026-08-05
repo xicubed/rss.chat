@@ -101,6 +101,22 @@ function getRemoteScreenname (entry) { //"dave@rss.chat" for an item whose sourc
 	const m = sourceFeedUrl.match (/^https?:\/\/([^\/]+)\/users\/([^\/]+)\/rss\.xml$/);
 	return ((m !== null) ? (m [2] + "@" + m [1]) : undefined);
 	}
+function absolutizeUrls (htmltext, baseUrl) { //8/4/26 by CC -- feeds in the wild carry relative addresses; resolve them against the item's own page so images and links work away from home
+	if ((htmltext === undefined) || (baseUrl === undefined)) {
+		return (htmltext);
+		}
+	return (htmltext.replace (/(src|href)="([^"]+)"/gi, function (theMatch, attname, url) {
+		if (/^[a-zA-Z][a-zA-Z0-9+.-]*:|^\/\/|^#/.test (url)) { //already absolute, protocol-relative, or a fragment -- leave it alone
+			return (theMatch);
+			}
+		try {
+			return (attname + "=\"" + new URL (url, baseUrl).href + "\"");
+			}
+		catch (err) {
+			return (theMatch);
+			}
+		}));
+	}
 function convertEntry (feedConfig, channel, entry) {
 	const guid = entry.guid || entry.link;
 	const link = entry.link || ((typeof guid === "string" && guid.indexOf ("http") === 0) ? guid : undefined);
@@ -109,7 +125,7 @@ function convertEntry (feedConfig, channel, entry) {
 		guid,
 		link,
 		title: entry.title,
-		description: asciidoc.sanitize (entry.content || entry.contentSnippet || ""),
+		description: absolutizeUrls (asciidoc.sanitize (entry.content || entry.contentSnippet || ""), link || channel.link || feedConfig.xmlUrl), //absolutize after sanitizing: sanitize-html normalizes attributes to double quotes
 		pubDate: entry.isoDate || entry.pubDate,
 		author: getAuthor (entry, channel.title),
 		feedUrl: feedConfig.xmlUrl,
