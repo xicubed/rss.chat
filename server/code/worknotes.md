@@ -1,3 +1,10 @@
+#### 8/5/26; 3:02 PM ET by CC
+
+**rss.chat feeds now support WebSub.** [Andrew Shell's rssCloud server](https://andrewshell.org/2026/07/rsscloud-server-4-0-now-supports-websub-notifications/) speaks both protocols as of its 4.0 release, over one shared list of subscribers -- so a reader that speaks WebSub can now follow an rss.chat feed in real time, the way an rssCloud reader always could. Two things make it work. Every feed we serve announces the hub in a `Link` header, which is the first place the spec tells a subscriber to look. And when a feed changes we tell the hub, right alongside the rssCloud ping we already send. It covers the per-user feeds, the everyone feed, and the subscription list at `data/subs.opml` -- WebSub works for OPML as well as RSS. (Server v0.6.14, on rss.chat and demo.rss.chat now.)
+
+**You can point it at any hub.** Two new settings, both with working defaults, so there's nothing to configure: `flWebsubEnabled` is on, and `urlWebsubHub` is Andrew's hub at `https://rpc.rsscloud.io/websub`. Put a different address in config.json and both the announcement and the ping follow it. Set `flWebsubEnabled` to false and neither happens. One note for operators: the header rides on feeds the server itself serves, so if yours publishes to S3 instead, there's nothing to announce.
+
+**Updating a server you already run.** Get the new `rssnetwork.js` and `package.json` from the repo and restart. No new packages this time, so there's no `npm install` step.
 #### 8/4/26; 9:40 PM ET by CC
 
 **Interleaved posts stopped breaking their images.** The first post from kuna.us arrived with a picture that wouldn't load: its feed says `src="/assets/..."`, a relative address, which each reader's browser resolved against *our* server -- where there's no such file. Feeds in the wild do this all the time, and the fix belongs to the reader: at ingest, extrafeeds now resolves relative `src` and `href` addresses against the item's own page, so an image lives where its post lives no matter whose timeline it's in. Absolute addresses, protocol-relative ones, and fragments pass through untouched.
