@@ -1,5 +1,8 @@
 # Deploying this server (perstitio.us)
 
+> **Pushing to `main` deploys and restarts the live server.** Merging a pull
+> request counts. See [Deploying updates](#deploying-updates-github-actions).
+
 How the perstitio.us instance is set up and how it ships. This is one concrete
 deployment of the install described in [../docs/install.md](../docs/install.md);
 read that for the meaning of each config value and the database schema.
@@ -47,12 +50,21 @@ it over **Tailscale**: it joins the tailnet with an ephemeral key, then SSHes to
 the box's private `100.x` address and runs:
 
 ```bash
-cd ~/rss.chat && git pull --ff-only origin main
+cd ~/rss.chat
+git fetch origin main
+git reset --hard origin/main
 cd server/code && npm install
 sudo systemctl restart rsschat
 ```
 
-You can also trigger it by hand from the Actions tab (`workflow_dispatch`).
+`reset --hard` makes the box match `main` exactly, so **don't hand-edit tracked
+files on the server** -- the next deploy wipes them. Gitignored files
+(`config.json`, `prefs.json`, `data/`) are left alone.
+
+A deploy takes about 30 seconds. Watch it in the Actions tab; a green run means
+the service came back up (the last step checks `systemctl is-active`). You can
+also run it by hand from there (`workflow_dispatch`) to redeploy without a new
+commit.
 
 ### Repo secrets the workflow needs
 
